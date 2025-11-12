@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#111" />
+  <title>Check-in (Camera + GPS + Âm thanh)</title>
+  <link rel="stylesheet" href="css/app_checkin.css" />
+</head>
+<body>
+  <div class="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas" style="display:none"></canvas>
+  </div>
+
+  <div id="tagInfo"></div>
+
+  <div class="bar" id="bar">
+    <button id="btnStart"   class="btn btn-blue">Cam</button>
+    <button id="btnShot"    class="btn btn-green" disabled>📸</button>
+    <button id="btnZoomOut" class="btn btn-icon btn-gray" title="Thu nhỏ">➖</button>
+    <button id="btnZoomIn"  class="btn btn-icon btn-gray" title="Phóng to">➕</button>
+
+    <button id="btnFit"     class="btn btn-gray">Fit: Contain</button>
+    <button id="btnTorch"   class="btn btn-icon btn-gray" title="Đèn">🔦</button>
+    <button id="btnSound"   class="btn btn-icon btn-gray" title="Bật/Tắt tiếng">🔊</button>
+    <button id="btnMap"     class="btn btn-gray" style="margin-left:auto">🗺️ Bản đồ</button>
+  </div>
+
+  <div id="toast"></div>
+  <iframe id="sink" name="sink" style="display:none"></iframe>
+  <audio id="snapSound" src="https://cdn.jsdelivr.net/gh/naptha/tesseract.js@master/examples/browser/sound/snap.wav" preload="auto"></audio>
+
+  <div id="mapSheet" aria-hidden="true">
+    <div id="mapHeader"><span class="grab"></span>🗺️ Bản đồ tuyến — bấm để đóng</div>
+    <iframe src="map_tuyen.html" id="mapFrame"></iframe>
+  </div>
+
+  <script defer src="js/app_checkin.js"></script>
+</body>
+</html>
