@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/",
-      "destination": "/app_checkin.html"
+      "destination": "/login.html"
     }
   ]
 }
