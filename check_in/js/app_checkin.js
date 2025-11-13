@@ -3,7 +3,7 @@ const TARGET_W = 900, TARGET_H = 1600;
 
 /* ===== SHEET so sánh (<=20m) khi bật cam ===== */
 const SHEET_URL = new URLSearchParams(location.search).get('sheet')
-  || 'https://docs.google.com/spreadsheets/d/.../pub?output=csv'; // TODO: thay link của bạn
+  || 'https://docs.google.com/spreadsheets/d/.../pub?output=csv'; // TODO: thay link CSV của bạn
 const SHEET_TTL_MS = 5 * 60 * 1000;
 const NEAR_RADIUS_M = 20;
 let SHEET_POINTS = [];
@@ -96,41 +96,41 @@ async function afterCameraStartedCheck20m(){
 }
 
 /* ================== DOM & PARAMS ================== */
-const $ = s => document.getElementById(s);
-const video    = $('video');
-const canvas   = $('canvas');
-const btnStart = $('btnStart');
-const btnShot  = $('btnShot');
-const btnTorch = $('btnTorch');
-const btnSound = $('btnSound');
-const btnMap   = $('btnMap');
-const btnZoomIn  = $('btnZoomIn');
-const btnZoomOut = $('btnZoomOut');
-const toastEl  = $('toast');
-const mapSheet = $('mapSheet');
-const mapHeader= $('mapHeader');
-const mapFrame = $('mapFrame');
-const bar      = $('bar');
-const tagInfo  = $('tagInfo');
-const stage    = document.getElementById('stage') || document.querySelector('.stage');
+const $ = id => document.getElementById(id);
 
-if (video) { video.style.objectFit = 'cover'; video.setAttribute('playsinline',''); video.muted = true; }
+const video     = $('video');
+const canvas    = $('canvas');
+const btnStart  = $('btnStart');
+const btnShot   = $('btnShot');
+const btnTorch  = $('btnTorch');
+const btnSound  = $('btnSound');
+const btnZoomIn = $('btnZoomIn');
+const btnZoomOut= $('btnZoomOut');
+const btnMenu   = $('btnMenu'); // nút Menu mới
+
+const toastEl   = $('toast');
+const bar       = $('bar');
+const tagInfo   = $('tagInfo');
+const stage     = $('stage') || document.querySelector('.stage');
+
+if (video) {
+  video.style.objectFit = 'cover';
+  video.setAttribute('playsinline','');
+  video.muted = true;
+}
+
 const qp   = new URLSearchParams(location.search);
 const MA_KH = qp.get('ma_kh') || '';
 const MA_HD = qp.get('ma_hd') || '';
-if (tagInfo) tagInfo.textContent = [MA_KH && `KH:${MA_KH}`, MA_HD && `HD:${MA_HD}`].filter(Boolean).join(' · ');
-(function syncMapSrc(){
-  if (!mapFrame) return;
-  const raw = mapFrame.getAttribute('src') || 'map_tuyen.html';
-  const u = new URL(raw, location.href);
-  if (MA_KH) u.searchParams.set('ma_kh', MA_KH);
-  if (qp.get('no_logo')) u.searchParams.set('no_logo', qp.get('no_logo'));
-  mapFrame.src = u.toString();
-})();
+if (tagInfo) {
+  tagInfo.textContent = [MA_KH && `KH:${MA_KH}`, MA_HD && `HD:${MA_HD}`]
+    .filter(Boolean).join(' · ');
+}
 
 /* ================== AUDIO (shutter) ================== */
 let audioCtx = null, compressor = null;
 const SHUTTER_GAIN = 0.9;
+
 async function ensureAudioCtx(){
   if(!audioCtx){
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -159,7 +159,7 @@ function noiseBurst(ctx, t0, dur=0.03){
   src.connect(lp); lp.connect(g); g.connect(compressor);
   src.start(t0); src.stop(t0 + dur + 0.01);
 }
-let soundEnabled=(localStorage.getItem('soundEnabled')??'1')==='1';
+let soundEnabled = (localStorage.getItem('soundEnabled')??'1') === '1';
 function renderSoundBtn(){
   if (!btnSound) return;
   btnSound.classList.toggle('btn-on', soundEnabled);
@@ -167,7 +167,7 @@ function renderSoundBtn(){
   btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
 }
 renderSoundBtn();
-btnSound && (btnSound.onclick=()=>{ 
+btnSound && (btnSound.onclick = ()=>{ 
   soundEnabled=!soundEnabled; 
   localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); 
   renderSoundBtn(); 
@@ -201,54 +201,78 @@ function toast(t,type='info',ms=2400){
   toastEl.style.opacity='1';
   toastEl.style.transform='translate(-50%,10px)';
   clearTimeout(toast._t);
-  toast._t=setTimeout(()=>{toastEl.style.opacity='0';toastEl.style.transform='translate(-50%,-120%)';},ms);
+  toast._t=setTimeout(()=>{
+    toastEl.style.opacity='0';
+    toastEl.style.transform='translate(-50%,-120%)';
+  },ms);
 }
 
-const CSS_DIGITAL_ZOOM_MAX = 5; // đổi thành 6, 8... nếu muốn zoom mạnh hơn
+const CSS_DIGITAL_ZOOM_MAX = 5;
 
 /* ================== CAMERA, ZOOM, TORCH ================== */
 let stream=null, videoTrack=null, torchOn=false;
 let zoomSupported=false, cssZoomFallback=false;
 let zoomMin=1, zoomMax=1, zoomStep=0.1, zoomVal=1;
 
+function stopCam(){
+  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch{} }
+  stream=null; videoTrack=null;
+  if (video) video.srcObject=null;
+}
+
+async function getBestStream(){
+  const baseVideo = {
+    width:  { ideal:1080 },
+    height: { ideal:1920 }
+  };
+  const trials = [
+    { video: { ...baseVideo, facingMode:{ exact:'environment' } }, audio:false },
+    { video: { ...baseVideo, facingMode:{ ideal:'environment' } }, audio:false },
+    { video: { ...baseVideo, facingMode:{ exact:'user' } }, audio:false },
+    { video: { ...baseVideo, facingMode:{ ideal:'user' } }, audio:false },
+    { video: baseVideo, audio:false }
+  ];
+  let lastErr=null;
+  for(const c of trials){
+    try{
+      return await navigator.mediaDevices.getUserMedia(c);
+    }catch(e){ lastErr=e; }
+  }
+  throw lastErr || new Error('Không lấy được camera');
+}
+
 async function startCam(){
   try{
     stopCam();
     stage && stage.classList.remove('ready');
 
-    const base = { video: { width:{ideal:1080}, height:{ideal:1920} }, audio:false };
-    let constraints = { ...base, video:{...base.video, facingMode:{ exact:'environment' } } };
-    try{ stream = await navigator.mediaDevices.getUserMedia(constraints); }
-    catch{ constraints.video.facingMode = { ideal:'environment' }; stream = await navigator.mediaDevices.getUserMedia(constraints); }
+    stream = await getBestStream();
 
     if (video) {
       video.srcObject = stream;
       video.setAttribute('playsinline','');
       video.muted = true;
-      video.autoplay = true;
+      await video.play();
     }
     videoTrack = stream.getVideoTracks()[0] || null;
-    await new Promise(r=> { if (video) video.onloadedmetadata = r; else r(); });
 
     stage && stage.classList.add('ready');
 
     if (btnShot) btnShot.disabled = false;
     await initZoom();
-    await setZoom(1);                 // ép 1× để không “zoom to”
+    await setZoom(1);
     await tryApplyTorch(false);
 
     toast('Đã bật camera','ok');
     await afterCameraStartedCheck20m();
   }catch(e){
+    console.error(e);
     if (btnShot) btnShot.disabled = true;
     stage && stage.classList.remove('ready');
     toast('Lỗi camera: '+ (e.message||e),'err',4200);
   }
 }
-function stopCam(){
-  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch{} }
-  stream=null; videoTrack=null; if (video) video.srcObject=null;
-}
+
 function renderCssZoom(){
   if (!video) return;
   video.style.transformOrigin = 'center center';
@@ -267,29 +291,21 @@ async function initZoom(){
     const hasZoom = caps && typeof caps.zoom === 'object';
 
     if (hasZoom && typeof caps.zoom.min === 'number'){
-      // 👉 Thiết bị có hỗ trợ zoom phần cứng
       zoomSupported = true;
-
-      // Dùng min/max đúng của camera (min thường là 1)
       zoomMin  = caps.zoom.min;
       zoomMax  = caps.zoom.max || caps.zoom.min;
       zoomStep = caps.zoom.step || 0.1;
-
-      // Bắt đầu từ min (nhỏ nhất mà camera hỗ trợ)
-      zoomVal = zoomMin;
+      zoomVal  = zoomMin;
       await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
-
     } else {
-      // 👉 Fallback: dùng zoom CSS (digital zoom)
       cssZoomFallback = true;
-      zoomMin  = 1;                    // 1× là “bình thường”
-      zoomMax  = CSS_DIGITAL_ZOOM_MAX; // ví dụ 5×
-      zoomStep = 0.2;                  // bước nhảy mượt hơn
+      zoomMin  = 1;
+      zoomMax  = CSS_DIGITAL_ZOOM_MAX;
+      zoomStep = 0.2;
       zoomVal  = 1;
       renderCssZoom();
     }
   } catch {
-    // Nếu lỗi capabilities → fallback CSS
     cssZoomFallback = true;
     zoomMin  = 1;
     zoomMax  = CSS_DIGITAL_ZOOM_MAX;
@@ -304,9 +320,7 @@ async function initZoom(){
 
 async function setZoom(next){
   next = Number(next) || 1;
-  // Giới hạn trong [zoomMin, zoomMax]
   next = Math.max(zoomMin, Math.min(zoomMax, next));
-
   if (Math.abs(next - zoomVal) < 1e-3) return;
   zoomVal = next;
 
@@ -317,7 +331,6 @@ async function setZoom(next){
       renderCssZoom();
     }
   } catch (e){
-    // Nếu applyConstraints lỗi → fallback CSS
     cssZoomFallback = true;
     zoomSupported = false;
     renderCssZoom();
@@ -330,7 +343,6 @@ async function setZoom(next){
 btnZoomIn  && (btnZoomIn.onclick  = ()=> setZoom((zoomVal + zoomStep).toFixed(2)));
 btnZoomOut && (btnZoomOut.onclick = ()=> setZoom((zoomVal - zoomStep).toFixed(2)));
 
-
 async function tryApplyTorch(turnOn){
   try{
     if(!videoTrack) return false;
@@ -340,7 +352,10 @@ async function tryApplyTorch(turnOn){
     torchOn = !!turnOn;
     btnTorch && btnTorch.classList.toggle('btn-on', torchOn);
     return true;
-  }catch{ if (btnTorch) btnTorch.disabled=true; return false; }
+  }catch{
+    if (btnTorch) btnTorch.disabled=true;
+    return false;
+  }
 }
 btnTorch && (btnTorch.onclick = async ()=>{
   const ok = await tryApplyTorch(!torchOn);
@@ -419,28 +434,25 @@ btnShot && (btnShot.onclick = async ()=>{
   }
 });
 
-/* ================== MAP SHEET ================== */
-btnMap && (btnMap.onclick = () => { 
-  stopCam(); 
-  if (bar) bar.style.display='none'; 
-  if (mapSheet) mapSheet.classList.add('open'); 
-});
-mapHeader && (mapHeader.onclick = () => { 
-  if (mapSheet) mapSheet.classList.remove('open'); 
-  if (bar) bar.style.display='flex'; 
-  startCam(); 
-});
+/* Nút Menu → về main.html */
+btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
 
 /* ================== AUTO BOOT ================== */
 (async()=>{
   try{
     const camPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'camera'}) : null;
     const geoPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'geolocation'}) : null;
+
+    // Chỉ tự bật cam nếu quyền đã granted (đỡ lỗi trên mobile)
     if (!camPerm || camPerm.state==='granted') await startCam();
+    // Gọi GPS sớm nếu được, để lần sau nhanh hơn
     if (!geoPerm || geoPerm.state==='granted') navigator.geolocation.getCurrentPosition(()=>{},()=>{});
-  }catch(e){}
+  }catch(e){
+    console.warn('Auto boot error', e);
+  }
 })();
+
 document.addEventListener('visibilitychange',()=>{ 
   if(document.hidden) stopCam(); 
-  else if(!mapSheet || !mapSheet.classList.contains('open')) startCam(); 
+  else startCam(); 
 });
