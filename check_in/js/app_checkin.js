@@ -10,26 +10,15 @@ let SHEET_POINTS = [];
 const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
 
 /* ===== Local cache helpers ===== */
-const lsGet = function(k){
-  try { return JSON.parse(localStorage.getItem(k) || 'null'); }
-  catch(e){ return null; }
-};
-const lsSet = function(k,v){
-  localStorage.setItem(k, JSON.stringify(v));
-};
+const lsGet = k => { try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null} };
+const lsSet = (k,v) => localStorage.setItem(k, JSON.stringify(v));
 
 function parseCsv(text){
   const lines = text.split(/\r?\n/).filter(Boolean);
   if(!lines.length) return [];
-  const headers = lines[0].split(',').map(function(s){return s.trim().toLowerCase();});
-  const id = function(n){ return headers.indexOf(n); };
-  const pick = function(){
-    for (let i=0;i<arguments.length;i++){
-      const idx = id(arguments[i]);
-      if (idx >= 0) return idx;
-    }
-    return -1;
-  };
+  const headers = lines[0].split(',').map(s=>s.trim().toLowerCase());
+  const id = n => headers.indexOf(n);
+  const pick = (...c)=>{ for(const x of c){ const i=id(x); if(i>=0) return i; } return -1; };
   const idx = {
     lat:   pick('lat','latitude','vi_do','vido'),
     lng:   pick('lng','lon','longitude','kinh_do','kinhdo'),
@@ -39,13 +28,11 @@ function parseCsv(text){
   };
   const out=[];
   for(let i=1;i<lines.length;i++){
-    const cols = lines[i].split(',').map(function(s){return s.trim();});
-    const lat = Number(cols[idx.lat]);
-    const lng = Number(cols[idx.lng]);
+    const cols = lines[i].split(',').map(s=>s.trim());
+    const lat = Number(cols[idx.lat]), lng = Number(cols[idx.lng]);
     if(!isFinite(lat)||!isFinite(lng)) continue;
     out.push({
-      lat: lat,
-      lng: lng,
+      lat, lng,
       name:  idx.name >=0 ? cols[idx.name]  : '',
       ma_kh: idx.ma_kh>=0 ? cols[idx.ma_kh] : '',
       ma_hd: idx.ma_hd>=0 ? cols[idx.ma_hd] : ''
@@ -63,18 +50,13 @@ async function ensureSheetPoints(){
   const res = await fetch(SHEET_URL, { cache:'no-store' });
   const ct  = (res.headers.get('content-type')||'').toLowerCase();
   let data=[];
-  if (ct.indexOf('application/json') !== -1){
+  if (ct.includes('application/json')){
     const j = await res.json();
     const arr = Array.isArray(j) ? j : (Array.isArray(j.data) ? j.data : []);
-    data = arr.map(function(r){
-      return {
-        lat: Number(r.lat),
-        lng: Number(r.lng),
-        name: r.name || r.ten || '',
-        ma_kh: r.ma_kh || '',
-        ma_hd: r.ma_hd || r.mahd || ''
-      };
-    }).filter(function(x){ return isFinite(x.lat) && isFinite(x.lng); });
+    data = arr.map(r=>({
+      lat:Number(r.lat), lng:Number(r.lng),
+      name:r.name||r.ten||'', ma_kh:r.ma_kh||'', ma_hd:r.ma_hd||r.mahd||''
+    })).filter(x=>isFinite(x.lat)&&isFinite(x.lng));
   }else{
     const txt = await res.text();
     data = parseCsv(txt);
@@ -85,19 +67,17 @@ async function ensureSheetPoints(){
   return SHEET_POINTS;
 }
 function distanceMeters(a,b){
-  const toRad=function(d){return d*Math.PI/180;}, R=6371000;
+  const toRad=d=>d*Math.PI/180, R=6371000;
   const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
   const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
   const aa=s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
   return 2*R*Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
 }
-function findNearbyInArray(lat,lng,arr,radiusM){
-  if (typeof radiusM === 'undefined' || radiusM === null) radiusM = NEAR_RADIUS_M;
+function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
   let best=null, bestD=Infinity;
-  for(let i=0;i<arr.length;i++){
-    const it = arr[i];
-    const d = distanceMeters({lat:lat,lng:lng},{lat:it.lat,lng:it.lng});
-    if(d<=radiusM && d<bestD){ best={lat:it.lat,lng:it.lng,name:it.name,ma_kh:it.ma_kh,ma_hd:it.ma_hd, dist:Math.round(d)}; bestD=d; }
+  for(const it of arr){
+    const d = distanceMeters({lat,lng},{lat:it.lat,lng:it.lng});
+    if(d<=radiusM && d<bestD){ best={...it, dist:Math.round(d)}; bestD=d; }
   }
   return best;
 }
@@ -109,14 +89,14 @@ async function afterCameraStartedCheck20m(){
       const hit = findNearbyInArray(g.lat, g.lng, SHEET_POINTS, NEAR_RADIUS_M);
       if (hit){
         const label = hit.name || hit.ma_kh || hit.ma_hd || 'Vị trí';
-        toast('✅ '+label+' đã được check-in ('+hit.dist+'m)', 'ok', 3500);
+        toast(`✅ ${label} đã được check-in (${hit.dist}m)`, 'ok', 3500);
       }
     }
-  }catch(e){}
+  }catch{}
 }
 
 /* ================== DOM & PARAMS ================== */
-const $ = function(id){ return document.getElementById(id); };
+const $ = id => document.getElementById(id);
 
 const video     = $('video');
 const canvas    = $('canvas');
@@ -126,12 +106,15 @@ const btnTorch  = $('btnTorch');
 const btnSound  = $('btnSound');
 const btnZoomIn = $('btnZoomIn');
 const btnZoomOut= $('btnZoomOut');
-const btnMenu   = $('btnMenu');
+const btnMenu   = $('btnMenu'); // nút Menu
 
 const toastEl   = $('toast');
 const bar       = $('bar');
 const tagInfo   = $('tagInfo');
 const stage     = $('stage') || document.querySelector('.stage');
+
+// ✅ Đảm bảo stage luôn hiện, tránh màn hình đen nếu cam lỗi
+if (stage) stage.classList.add('ready');
 
 if (video) {
   video.style.objectFit = 'cover';
@@ -143,10 +126,8 @@ const qp   = new URLSearchParams(location.search);
 const MA_KH = qp.get('ma_kh') || '';
 const MA_HD = qp.get('ma_hd') || '';
 if (tagInfo) {
-  const parts = [];
-  if (MA_KH) parts.push('KH:'+MA_KH);
-  if (MA_HD) parts.push('HD:'+MA_HD);
-  tagInfo.textContent = parts.join(' · ');
+  tagInfo.textContent = [MA_KH && `KH:${MA_KH}`, MA_HD && `HD:${MA_HD}`]
+    .filter(Boolean).join(' · ');
 }
 
 /* ================== AUDIO (shutter) ================== */
@@ -167,8 +148,7 @@ async function ensureAudioCtx(){
   }
   if(audioCtx.state === 'suspended') await audioCtx.resume();
 }
-function noiseBurst(ctx, t0, dur){
-  if (typeof dur === 'undefined') dur = 0.03;
+function noiseBurst(ctx, t0, dur=0.03){
   const len = Math.floor(ctx.sampleRate * dur);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const data = buf.getChannelData(0);
@@ -182,7 +162,7 @@ function noiseBurst(ctx, t0, dur){
   src.connect(lp); lp.connect(g); g.connect(compressor);
   src.start(t0); src.stop(t0 + dur + 0.01);
 }
-let soundEnabled = (localStorage.getItem('soundEnabled') || '1') === '1';
+let soundEnabled = (localStorage.getItem('soundEnabled')??'1') === '1';
 function renderSoundBtn(){
   if (!btnSound) return;
   btnSound.classList.toggle('btn-on', soundEnabled);
@@ -190,14 +170,12 @@ function renderSoundBtn(){
   btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
 }
 renderSoundBtn();
-if (btnSound){
-  btnSound.onclick = function(){ 
-    soundEnabled = !soundEnabled;
-    localStorage.setItem('soundEnabled', soundEnabled ? '1' : '0'); 
-    renderSoundBtn(); 
-    toast(soundEnabled ? 'Đã bật tiếng chụp' : 'Đã tắt tiếng chụp'); 
-  };
-}
+btnSound && (btnSound.onclick = ()=>{ 
+  soundEnabled=!soundEnabled; 
+  localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); 
+  renderSoundBtn(); 
+  toast(soundEnabled?'Đã bật tiếng chụp':'Đã tắt tiếng chụp'); 
+});
 async function playShutter(){
   if(!soundEnabled) return;
   await ensureAudioCtx();
@@ -220,15 +198,13 @@ async function playShutter(){
 }
 
 /* ================== TOAST ================== */
-function toast(t,type,ms){
-  if (typeof type === 'undefined') type = 'info';
-  if (typeof ms === 'undefined') ms = 2400;
+function toast(t,type='info',ms=2400){
   if (!toastEl) return;
   toastEl.textContent=t;
   toastEl.style.opacity='1';
   toastEl.style.transform='translate(-50%,10px)';
-  if (toast._t) clearTimeout(toast._t);
-  toast._t=setTimeout(function(){
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>{
     toastEl.style.opacity='0';
     toastEl.style.transform='translate(-50%,-120%)';
   },ms);
@@ -242,29 +218,32 @@ let zoomSupported=false, cssZoomFallback=false;
 let zoomMin=1, zoomMax=1, zoomStep=0.1, zoomVal=1;
 
 function stopCam(){
-  if(stream){
-    try{ stream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
-  }
+  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch{} }
   stream=null; videoTrack=null;
   if (video) video.srcObject=null;
 }
 
+// Thử nhiều cấu hình camera: sau → sau (ideal) → trước → trước (ideal) → mặc định
 async function getBestStream(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    throw new Error('Trình duyệt không hỗ trợ camera (getUserMedia). Hãy dùng Chrome/Safari mới và HTTPS.');
+  }
+
   const baseVideo = {
     width:  { ideal:1080 },
     height: { ideal:1920 }
   };
   const trials = [
-    { video: Object.assign({}, baseVideo, { facingMode:{ exact:'environment' } }), audio:false },
-    { video: Object.assign({}, baseVideo, { facingMode:{ ideal:'environment' } }), audio:false },
-    { video: Object.assign({}, baseVideo, { facingMode:{ exact:'user' } }), audio:false },
-    { video: Object.assign({}, baseVideo, { facingMode:{ ideal:'user' } }), audio:false },
+    { video: { ...baseVideo, facingMode:{ exact:'environment' } }, audio:false },
+    { video: { ...baseVideo, facingMode:{ ideal:'environment' } }, audio:false },
+    { video: { ...baseVideo, facingMode:{ exact:'user' } }, audio:false },
+    { video: { ...baseVideo, facingMode:{ ideal:'user' } }, audio:false },
     { video: baseVideo, audio:false }
   ];
   let lastErr=null;
-  for(let i=0;i<trials.length;i++){
+  for(const c of trials){
     try{
-      return await navigator.mediaDevices.getUserMedia(trials[i]);
+      return await navigator.mediaDevices.getUserMedia(c);
     }catch(e){ lastErr=e; }
   }
   throw lastErr || new Error('Không lấy được camera');
@@ -273,7 +252,6 @@ async function getBestStream(){
 async function startCam(){
   try{
     stopCam();
-    if (stage) stage.classList.remove('ready');
 
     stream = await getBestStream();
 
@@ -285,6 +263,7 @@ async function startCam(){
     }
     videoTrack = stream.getVideoTracks()[0] || null;
 
+    // đảm bảo UI luôn hiện
     if (stage) stage.classList.add('ready');
 
     if (btnShot) btnShot.disabled = false;
@@ -297,15 +276,20 @@ async function startCam(){
   }catch(e){
     console.error(e);
     if (btnShot) btnShot.disabled = true;
-    if (stage) stage.classList.remove('ready');
-    toast('Lỗi camera: '+ (e && e.message ? e.message : e),'err',4200);
+
+    // vẫn giữ stage hiển thị để người dùng thấy nút & thông báo
+    if (stage) stage.classList.add('ready');
+
+    let msg = e && e.message ? e.message : String(e);
+    toast('Lỗi camera: '+ msg,'err',4200);
+    try { alert('Lỗi mở camera: ' + msg); } catch {}
   }
 }
 
 function renderCssZoom(){
   if (!video) return;
   video.style.transformOrigin = 'center center';
-  video.style.transform = 'scale('+zoomVal+')';
+  video.style.transform = `scale(${zoomVal})`;
 }
 async function initZoom(){
   zoomSupported = false;
@@ -316,11 +300,8 @@ async function initZoom(){
   zoomVal = 1;
 
   try{
-    var caps = {};
-    if (videoTrack && typeof videoTrack.getCapabilities === 'function') {
-      caps = videoTrack.getCapabilities();
-    }
-    var hasZoom = caps && typeof caps.zoom === 'object';
+    const caps = videoTrack?.getCapabilities?.() || {};
+    const hasZoom = caps && typeof caps.zoom === 'object';
 
     if (hasZoom && typeof caps.zoom.min === 'number'){
       zoomSupported = true;
@@ -337,7 +318,7 @@ async function initZoom(){
       zoomVal  = 1;
       renderCssZoom();
     }
-  } catch(e){
+  } catch {
     cssZoomFallback = true;
     zoomMin  = 1;
     zoomMax  = CSS_DIGITAL_ZOOM_MAX;
@@ -352,13 +333,12 @@ async function initZoom(){
 
 async function setZoom(next){
   next = Number(next) || 1;
-  if (next < zoomMin) next = zoomMin;
-  if (next > zoomMax) next = zoomMax;
+  next = Math.max(zoomMin, Math.min(zoomMax, next));
   if (Math.abs(next - zoomVal) < 1e-3) return;
   zoomVal = next;
 
   try{
-    if (zoomSupported && videoTrack){
+    if (zoomSupported){
       await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
     } else if (cssZoomFallback){
       renderCssZoom();
@@ -373,39 +353,27 @@ async function setZoom(next){
   if (btnZoomIn)  btnZoomIn.disabled  = zoomVal >= (zoomMax - 1e-6);
 }
 
-if (btnZoomIn){
-  btnZoomIn.onclick  = function(){ setZoom((zoomVal + zoomStep).toFixed(2)); };
-}
-if (btnZoomOut){
-  btnZoomOut.onclick = function(){ setZoom((zoomVal - zoomStep).toFixed(2)); };
-}
+btnZoomIn  && (btnZoomIn.onclick  = ()=> setZoom((zoomVal + zoomStep).toFixed(2)));
+btnZoomOut && (btnZoomOut.onclick = ()=> setZoom((zoomVal - zoomStep).toFixed(2)));
 
 async function tryApplyTorch(turnOn){
   try{
     if(!videoTrack) return false;
-    var capabilities = {};
-    if (typeof videoTrack.getCapabilities === 'function') {
-      capabilities = videoTrack.getCapabilities();
-    }
-    if(!('torch' in capabilities)) {
-      if (btnTorch) btnTorch.disabled=true;
-      return false;
-    }
+    const capabilities = videoTrack.getCapabilities?.() || {};
+    if(!('torch' in capabilities)) { if (btnTorch) btnTorch.disabled=true; return false; }
     await videoTrack.applyConstraints({ advanced: [{ torch: !!turnOn }] });
     torchOn = !!turnOn;
-    if (btnTorch) btnTorch.classList.toggle('btn-on', torchOn);
+    btnTorch && btnTorch.classList.toggle('btn-on', torchOn);
     return true;
-  }catch(e){
+  }catch{
     if (btnTorch) btnTorch.disabled=true;
     return false;
   }
 }
-if (btnTorch){
-  btnTorch.onclick = async function(){
-    const ok = await tryApplyTorch(!torchOn);
-    if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
-  };
-}
+btnTorch && (btnTorch.onclick = async ()=>{
+  const ok = await tryApplyTorch(!torchOn);
+  if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
+});
 
 /* ================== CANVAS & GPS ================== */
 function drawToCanvas(){
@@ -425,107 +393,78 @@ function drawToCanvas(){
   canvas.width = TARGET_W; canvas.height = TARGET_H;
   canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
 }
-function getGPSOnce(){
-  return new Promise(function(resolve){
-    if(!navigator.geolocation || !navigator.geolocation.getCurrentPosition){
-      return resolve(null);
-    }
-    navigator.geolocation.getCurrentPosition(
-      function(p){
-        resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy});
-      },
-      function(){
-        resolve(null);
-      },
-      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-    );
-  });
-}
+function getGPSOnce(){ return new Promise(resolve=>{
+  if(!('geolocation' in navigator)) return resolve(null);
+  navigator.geolocation.getCurrentPosition(
+    p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
+    _=>resolve(null),
+    { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+  );
+});}
 
 /* ================== EVENTS ================== */
-if (btnStart){
-  btnStart.onclick = startCam;
-}
+btnStart && (btnStart.onclick = startCam);
 
 let shooting = false;
-if (btnShot){
-  btnShot.onclick = async function(){
-    if(!stream || shooting){ toast('Đang xử lý...', 'info'); return; }
-    shooting = true; btnShot.disabled = true;
+btnShot && (btnShot.onclick = async ()=>{
+  if(!stream || shooting){ toast('Đang xử lý...', 'info'); return; }
+  shooting = true; btnShot.disabled = true;
 
-    try{
-      await ensureAudioCtx();
-      await playShutter();
-      drawToCanvas();
+  try{
+    await ensureAudioCtx();
+    await playShutter();
+    drawToCanvas();
 
-      const mime = 'image/jpeg';
-      const dataUrl = canvas.toDataURL(mime, 0.85);
-      const gps = await getGPSOnce();
+    const mime = 'image/jpeg';
+    const dataUrl = canvas.toDataURL(mime, 0.85);
+    const gps = await getGPSOnce();
 
-      let lat = '', lng = '';
-      if (gps){
-        if (gps.lat !== undefined && gps.lat !== null) lat = gps.lat;
-        if (gps.lng !== undefined && gps.lng !== null) lng = gps.lng;
-      }
+    const lat = gps?.lat ?? '';
+    const lng = gps?.lng ?? '';
+    const payload = {
+      image_mime: mime,
+      image_b64: (dataUrl.split(',')[1] || ''),
+      ma_kh: MA_KH || '',
+      ma_hd: MA_HD || ''
+    };
 
-      const payload = {
-        image_mime: mime,
-        image_b64: (dataUrl.split(',')[1] || ''),
-        ma_kh: MA_KH || '',
-        ma_hd: MA_HD || ''
-      };
+    sessionStorage.setItem(SESSION_IMG_KEY, JSON.stringify(payload));
 
-      sessionStorage.setItem(SESSION_IMG_KEY, JSON.stringify(payload));
+    const targetUrl = new URL('/checkin_khach_hang.html', location.origin);
+    if (lat !== '') targetUrl.searchParams.set('lat', String(lat));
+    if (lng !== '') targetUrl.searchParams.set('lng', String(lng));
+    if (lat !== '') targetUrl.searchParams.set('lag', String(lat)); // giữ nguyên logic cũ của bạn
+    if (MA_KH)      targetUrl.searchParams.set('ma_kh', MA_KH);
+    if (MA_HD)      targetUrl.searchParams.set('ma_hd', MA_HD);
+    targetUrl.searchParams.set('img', 'session');
 
-      const targetUrl = new URL('/checkin_khach_hang.html', location.origin);
-      if (lat !== '') targetUrl.searchParams.set('lat', String(lat));
-      if (lng !== '') targetUrl.searchParams.set('lng', String(lng));
-      if (lat !== '') targetUrl.searchParams.set('lag', String(lat));
-      if (MA_KH)      targetUrl.searchParams.set('ma_kh', MA_KH);
-      if (MA_HD)      targetUrl.searchParams.set('ma_hd', MA_HD);
-      targetUrl.searchParams.set('img', 'session');
-
-      location.assign(targetUrl.toString());
-    } catch (err) {
-      console.error(err);
-      toast('Lỗi khi chuẩn bị dữ liệu: ' + (err && err.message ? err.message : err), 'err', 4000);
-    } finally {
-      setTimeout(function(){ shooting = false; btnShot.disabled = !stream; }, 800);
-    }
-  };
-}
+    location.assign(targetUrl.toString());
+  } catch (err) {
+    console.error(err);
+    toast('Lỗi khi chuẩn bị dữ liệu: ' + (err.message || err), 'err', 4000);
+  } finally {
+    setTimeout(()=>{ shooting = false; btnShot.disabled = !stream; }, 800);
+  }
+});
 
 /* Nút Menu → về main.html */
-if (btnMenu){
-  btnMenu.onclick = function(){ location.assign('main.html'); };
-}
+btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
 
 /* ================== AUTO BOOT ================== */
-(async function(){
+(async()=>{
   try{
-    var camPerm = null;
-    var geoPerm = null;
-
-    if (navigator.permissions && typeof navigator.permissions.query === 'function') {
-      try { camPerm = await navigator.permissions.query({ name: 'camera' }); } catch(e) {}
-      try { geoPerm = await navigator.permissions.query({ name: 'geolocation' }); } catch(e) {}
+    // Thử mở camera ngay (trình duyệt sẽ xin quyền)
+    await startCam();
+    // warm-up GPS nếu được
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(()=>{},()=>{});
     }
-
-    if (!camPerm || camPerm.state === 'granted') {
-      await startCam();
-    }
-
-    if (!geoPerm || geoPerm.state === 'granted') {
-      if (navigator.geolocation && navigator.geolocation.getCurrentPosition) {
-        navigator.geolocation.getCurrentPosition(function(){}, function(){});
-      }
-    }
-  } catch(e){
+  }catch(e){
     console.warn('Auto boot error', e);
   }
 })();
 
-document.addEventListener('visibilitychange',function(){ 
+document.addEventListener('visibilitychange',()=>{ 
   if(document.hidden) stopCam(); 
   else startCam(); 
 });
