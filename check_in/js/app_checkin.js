@@ -1,379 +1,150 @@
-/* ================== CONFIG ================== */
-const TARGET_W = 900, TARGET_H = 1600;
-
-/* ===== SHEET so sánh (<=20m) khi bật cam ===== */
-const SHEET_URL = new URLSearchParams(location.search).get('sheet')
-  || 'https://docs.google.com/spreadsheets/d/.../pub?output=csv'; // TODO: thay link của bạn
-const SHEET_TTL_MS = 5 * 60 * 1000;
-const NEAR_RADIUS_M = 20;
-let SHEET_POINTS = [];
-const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
-
-function lsGet(k){ try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null} }
-function lsSet(k,v){ localStorage.setItem(k, JSON.stringify(v)) }
-
-function parseCsv(text){
-  const lines = text.split(/\r?\n/).filter(Boolean);
-  if(!lines.length) return [];
-  const headers = lines[0].split(',').map(s=>s.trim().toLowerCase());
-  const id = n => headers.indexOf(n);
-  const pick = (...c)=>{ for(const x of c){ const i=id(x); if(i>=0) return i; } return -1; };
-  const idx = {
-    lat:   pick('lat','latitude','vi_do','vido'),
-    lng:   pick('lng','lon','longitude','kinh_do','kinhdo'),
-    name:  pick('name','ten','tên'),
-    ma_kh: pick('ma_kh','makh','ma','mã'),
-    ma_hd: pick('ma_hd','mahd')
-  };
-  const out=[];
-  for(let i=1;i<lines.length;i++){
-    const cols = lines[i].split(',').map(s=>s.trim());
-    const lat = Number(cols[idx.lat]), lng = Number(cols[idx.lng]);
-    if(!isFinite(lat)||!isFinite(lng)) continue;
-    out.push({
-      lat, lng,
-      name:  idx.name >=0 ? cols[idx.name]  : '',
-      ma_kh: idx.ma_kh>=0 ? cols[idx.ma_kh] : '',
-      ma_hd: idx.ma_hd>=0 ? cols[idx.ma_hd] : ''
-    });
-  }
-  return out;
-}
-async function ensureSheetPoints(){
-  if (SHEET_POINTS.length) return SHEET_POINTS;
-  const cached = lsGet('SHEET_POINTS_CACHE');
-  const ts = lsGet('SHEET_POINTS_TS');
-  if (cached && ts && (Date.now()-ts < SHEET_TTL_MS)){
-    SHEET_POINTS = cached; return SHEET_POINTS;
-  }
-  const res = await fetch(SHEET_URL, { cache:'no-store' });
-  const ct  = (res.headers.get('content-type')||'').toLowerCase();
-  let data=[];
-  if (ct.includes('application/json')){
-    const j = await res.json();
-    const arr = Array.isArray(j) ? j : (Array.isArray(j.data) ? j.data : []);
-    data = arr.map(r=>({
-      lat:Number(r.lat), lng:Number(r.lng),
-      name:r.name||r.ten||'', ma_kh:r.ma_kh||'', ma_hd:r.ma_hd||r.mahd||''
-    })).filter(x=>isFinite(x.lat)&&isFinite(x.lng));
-  }else{
-    const txt = await res.text();
-    data = parseCsv(txt);
-  }
-  SHEET_POINTS = data;
-  lsSet('SHEET_POINTS_CACHE', data);
-  lsSet('SHEET_POINTS_TS', Date.now());
-  return SHEET_POINTS;
-}
-function distanceMeters(a,b){
-  const toRad=d=>d*Math.PI/180, R=6371000;
-  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
-  const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
-  const aa=s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
-  return 2*R*Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
-}
-function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
-  let best=null, bestD=Infinity;
-  for(const it of arr){
-    const d = distanceMeters({lat,lng},{lat:it.lat,lng:it.lng});
-    if(d<=radiusM && d<bestD){ best={...it, dist:Math.round(d)}; bestD=d; }
-  }
-  return best;
-}
-async function afterCameraStartedCheck20m(){
-  try{
-    await ensureSheetPoints();
-    const g = await getGPSOnce();
-    if (g && (g.acc==null || g.acc<=60)){
-      const hit = findNearbyInArray(g.lat, g.lng, SHEET_POINTS, NEAR_RADIUS_M);
-      if (hit){
-        const label = hit.name || hit.ma_kh || hit.ma_hd || 'Vị trí';
-        toast(`✅ ${label} đã được check-in (${hit.dist}m)`, 'ok', 3500);
-      }
-    }
-  }catch{}
+:root{
+  --bar-h:76px;
 }
 
-/* ================== DOM & PARAMS ================== */
-const $ = s => document.getElementById(s);
-const video    = $('video');
-const canvas   = $('canvas');
-const btnStart = $('btnStart');
-const btnShot  = $('btnShot');
-const btnFit   = $('btnFit');
-const btnTorch = $('btnTorch');
-const btnSound = $('btnSound');
-const btnMap   = $('btnMap');
-const btnZoomIn  = $('btnZoomIn');
-const btnZoomOut = $('btnZoomOut');
-const toastEl  = $('toast');
-const mapSheet = $('mapSheet');
-const mapHeader= $('mapHeader');
-const mapFrame = $('mapFrame');
-const bar      = $('bar');
-const tagInfo  = $('tagInfo');
-
-const qp   = new URLSearchParams(location.search);
-const MA_KH = qp.get('ma_kh') || '';
-const MA_HD = qp.get('ma_hd') || '';
-if (tagInfo) tagInfo.textContent = [MA_KH && `KH:${MA_KH}`, MA_HD && `HD:${MA_HD}`].filter(Boolean).join(' · ');
-(function syncMapSrc(){
-  const raw = mapFrame?.getAttribute('src') || 'map_tuyen.html';
-  const u = new URL(raw, location.href);
-  if (MA_KH) u.searchParams.set('ma_kh', MA_KH);
-  if (qp.get('no_logo')) u.searchParams.set('no_logo', qp.get('no_logo'));
-  mapFrame.src = u.toString();
-})();
-
-/* ================== AUDIO (shutter) ================== */
-let audioCtx = null, compressor = null;
-const SHUTTER_GAIN = 0.9;
-async function ensureAudioCtx(){
-  if(!audioCtx){
-    const AC = window.AudioContext || window.webkitAudioContext;
-    audioCtx = new AC();
-    compressor = audioCtx.createDynamicsCompressor();
-    compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
-    compressor.knee.setValueAtTime(30, audioCtx.currentTime);
-    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
-    compressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
-    compressor.release.setValueAtTime(0.1, audioCtx.currentTime);
-    compressor.connect(audioCtx.destination);
-  }
-  if(audioCtx.state === 'suspended') await audioCtx.resume();
+/* ===== RESET CƠ BẢN ===== */
+html,body{
+  margin:0;
+  padding:0;
+  height:100%;
+  min-height:-webkit-fill-available;
+  background:#000;
+  color:#fff;
+  font-family:system-ui, Segoe UI, Roboto, Arial;
+  overflow:hidden;
 }
-function noiseBurst(ctx, t0, dur=0.03){
-  const len = Math.floor(ctx.sampleRate * dur);
-  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-  const data = buf.getChannelData(0);
-  for(let i=0;i<len;i++) data[i] = (Math.random()*2-1) * 0.6;
-  const src = ctx.createBufferSource(); src.buffer = buf;
-  const g = ctx.createGain();
-  g.gain.setValueAtTime(0, t0);
-  g.gain.linearRampToValueAtTime(SHUTTER_GAIN, t0 + 0.005);
-  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
-  const lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(4500, t0);
-  src.connect(lp); lp.connect(g); g.connect(compressor);
-  src.start(t0); src.stop(t0 + dur + 0.01);
-}
-async function playShutter(){
-  if(!soundEnabled) return;
-  await ensureAudioCtx();
-  const ctx = audioCtx; const now = ctx.currentTime;
-  noiseBurst(ctx, now, 0.035);
-  const osc1 = ctx.createOscillator(), g1 = ctx.createGain();
-  osc1.type='square'; osc1.frequency.setValueAtTime(1400, now);
-  g1.gain.setValueAtTime(0, now);
-  g1.gain.linearRampToValueAtTime(SHUTTER_GAIN, now + 0.01);
-  g1.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-  osc1.connect(g1); g1.connect(compressor); osc1.start(now); osc1.stop(now + 0.1);
-  const t2 = now + 0.06;
-  const osc2 = ctx.createOscillator(), g2 = ctx.createGain();
-  osc2.type='square'; osc2.frequency.setValueAtTime(950, t2);
-  g2.gain.setValueAtTime(0, t2);
-  g2.gain.linearRampToValueAtTime(SHUTTER_GAIN*0.7, t2 + 0.012);
-  g2.gain.exponentialRampToValueAtTime(0.001, t2 + 0.08);
-  osc2.connect(g2); g2.connect(compressor); osc2.start(t2); osc2.stop(t2 + 0.09);
-  if (navigator.vibrate) navigator.vibrate(30);
-}
-['pointerdown','touchstart','click'].forEach(evt=>{
-  document.addEventListener(evt, ()=>ensureAudioCtx(), { once:true, passive:true });
-});
 
-/* ================== TOAST & SOUND BTN ================== */
-function toast(t,type='info',ms=2400){
-  toastEl.textContent=t;
-  toastEl.style.opacity='1';
-  toastEl.style.transform='translate(-50%,10px)';
-  clearTimeout(toast._t);
-  toast._t=setTimeout(()=>{toastEl.style.opacity='0';toastEl.style.transform='translate(-50%,-120%)';},ms);
+/* ===== LOADING CAMERA ===== */
+.stage{
+  position:fixed;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:#000;
+  z-index:1;
+  opacity:0;
+  transform:scale(0.001);
+  transition:.18s;
 }
-let soundEnabled=(localStorage.getItem('soundEnabled')??'1')==='1';
-function renderSoundBtn(){
-  btnSound.classList.toggle('btn-on', soundEnabled);
-  btnSound.textContent = soundEnabled ? '🔊' : '🔇';
-  btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
+.stage.ready{
+  opacity:1;
+  transform:scale(1);
 }
-renderSoundBtn();
-btnSound.onclick=()=>{ soundEnabled=!soundEnabled; localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); renderSoundBtn(); toast(soundEnabled?'Đã bật tiếng chụp':'Đã tắt tiếng chụp'); };
 
-/* ================== FIT COVER/CONTAIN ================== */
-let fitMode = localStorage.getItem('fitMode') || 'contain';
-function applyFit(){
-  video.style.objectFit = fitMode;
-  btnFit.textContent = `Fit: ${fitMode[0].toUpperCase()+fitMode.slice(1)}`;
+/* ===== VIDEO / CANVAS ===== */
+video,canvas{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+  background:#000;
+  pointer-events:none;
 }
-applyFit();
-btnFit.onclick = () => { fitMode = (fitMode === 'cover') ? 'contain' : 'cover'; localStorage.setItem('fitMode', fitMode); applyFit(); };
 
-/* ================== CAMERA, ZOOM, TORCH ================== */
-let stream=null, videoTrack=null, torchOn=false;
-let zoomSupported=false, cssZoomFallback=false;
-let zoomMin=1, zoomMax=1, zoomStep=0.1, zoomVal=1;
+/* ===== BAR NÚT ===== */
+.bar{
+  position:fixed;
+  left:0; right:0; bottom:0;
+  height:var(--bar-h);
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  align-items:center;
+  background:rgba(0,0,0,.28);
+  backdrop-filter:blur(10px);
+  border-top:1px solid rgba(255,255,255,.12);
+  z-index:50;
+}
 
-async function startCam(){
-  try{
-    stopCam();
-    const base = { video: { width:{ideal:1080}, height:{ideal:1920} }, audio:false };
-    let constraints = { ...base, video:{...base.video, facingMode:{ exact:'environment' } } };
-    try{ stream = await navigator.mediaDevices.getUserMedia(constraints); }
-    catch{ constraints.video.facingMode = { ideal:'environment' }; stream = await navigator.mediaDevices.getUserMedia(constraints); }
-    video.srcObject = stream;
-    videoTrack = stream.getVideoTracks()[0] || null;
-    await new Promise(r=> video.onloadedmetadata = r);
-    btnShot.disabled = false;
-    await initZoom();
-    await tryApplyTorch(false);
-    toast('Đã bật camera','ok');
-    await afterCameraStartedCheck20m();
-  }catch(e){
-    btnShot.disabled = true;
-    toast('Lỗi camera: '+ (e.message||e),'err',4200);
+/* ===== BUTTONS ===== */
+.btn{
+  appearance:none;
+  border:none;
+  border-radius:12px;
+  padding:10px 14px;
+  font-weight:700;
+  font-size:15px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+/* Màu */
+.btn-blue{background:#2563eb;color:#fff;}
+.btn-green{background:#10b981;color:#001b12;}
+.btn-gray{background:#374151;color:#fff;}
+.btn-on{background:#10b981!important;color:#fff!important;}
+
+/* Icon */
+.btn-icon{
+  padding:10px;
+  width:44px;
+  height:44px;
+  font-size:18px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* ===== TOAST ===== */
+#toast{
+  position:fixed;
+  left:50%;
+  top:0;
+  transform:translate(-50%,-120%);
+  opacity:0;
+  padding:10px 14px;
+  border-radius:12px;
+  background:#e0f2fe;
+  color:#075985;
+  border:1px solid #38bdf8;
+  font-weight:700;
+  box-shadow:0 6px 22px rgba(0,0,0,.25);
+  transition:.25s;
+  z-index:99;
+}
+
+/* ===== TAG KH/HD ===== */
+#tagInfo{
+  position:fixed;
+  left:12px;
+  top:10px;
+  padding:6px 10px;
+  font-size:12px;
+  border-radius:10px;
+  backdrop-filter:blur(6px);
+  background:#111a;
+  border:1px solid #ffffff22;
+  z-index:60;
+}
+
+/* ===== KHUNG CAMERA DẠNG APP ===== */
+.cam-box{
+  position:relative;
+  width:100%;
+  max-width:480px;
+  aspect-ratio:9/16;
+  margin:12px auto;
+  background:#000;
+  border-radius:18px;
+  overflow:hidden;
+}
+
+.cam-box video,
+.cam-box canvas{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
+/* MOBILE: mở rộng cam-box */
+@media(max-width:768px){
+  .cam-box{
+    max-width:none;
+    height:min(70vh,600px);
+    aspect-ratio:auto;
   }
 }
-function stopCam(){
-  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch{} }
-  stream=null; videoTrack=null; video.srcObject=null;
-}
-function renderCssZoom(){
-  video.style.transformOrigin = 'center center';
-  video.style.transform = `scale(${zoomVal})`;
-}
-async function initZoom(){
-  zoomSupported = false; cssZoomFallback = false;
-  zoomMin = 1; zoomMax = 1; zoomStep = 0.1; zoomVal = 1;
-  try{
-    const caps = videoTrack?.getCapabilities?.() || {};
-    if (caps.zoom && typeof caps.zoom.min === 'number'){
-      zoomSupported = true;
-      zoomMin = Math.max(1, caps.zoom.min || 1);
-      zoomMax = Math.max(zoomMin, caps.zoom.max || 1);
-      zoomStep = caps.zoom.step || 0.1;
-      const settings = videoTrack.getSettings?.() || {};
-      zoomVal = Math.min(zoomMax, Math.max(zoomMin, settings.zoom || 1));
-      await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
-    }else{
-      cssZoomFallback = true; zoomMin = 1; zoomMax = 3; zoomStep = 0.1; zoomVal = 1; renderCssZoom();
-    }
-  }catch{
-    cssZoomFallback = true; zoomMin = 1; zoomMax = 3; zoomStep = 0.1; zoomVal = 1; renderCssZoom();
-  }
-  btnZoomIn.disabled  = (zoomVal >= zoomMax);
-  btnZoomOut.disabled = (zoomVal <= zoomMin);
-}
-async function setZoom(next){
-  next = Math.max(zoomMin, Math.min(zoomMax, Number(next) || 1));
-  if (next === zoomVal) return;
-  zoomVal = next;
-  try{
-    if (zoomSupported){ await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] }); }
-    else if (cssZoomFallback){ renderCssZoom(); }
-  }catch(e){ cssZoomFallback = true; zoomSupported = false; renderCssZoom(); }
-  btnZoomOut.disabled = zoomVal <= (zoomMin + 1e-6);
-  btnZoomIn.disabled  = zoomVal >= (zoomMax - 1e-6);
-}
-btnZoomIn.onclick  = ()=> setZoom((zoomVal + zoomStep).toFixed(2));
-btnZoomOut.onclick = ()=> setZoom((zoomVal - zoomStep).toFixed(2));
-
-async function tryApplyTorch(turnOn){
-  try{
-    if(!videoTrack) return false;
-    const capabilities = videoTrack.getCapabilities?.() || {};
-    if(!('torch' in capabilities)) { btnTorch.disabled=true; return false; }
-    await videoTrack.applyConstraints({ advanced: [{ torch: !!turnOn }] });
-    torchOn = !!turnOn;
-    btnTorch.classList.toggle('btn-on', torchOn);
-    return true;
-  }catch{ btnTorch.disabled=true; return false; }
-}
-btnTorch.onclick = async ()=>{ const ok = await tryApplyTorch(!torchOn); if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err'); };
-
-/* ================== CANVAS & GPS ================== */
-function drawToCanvas(){
-  const fw = video.videoWidth, fh = video.videoHeight;
-  if(!fw || !fh) return;
-  const desired = TARGET_W / TARGET_H;
-  const ar = fw / fh;
-  let sx=0, sy=0, sw=fw, sh=fh;
-  if (ar > desired){ sw = fh * desired; sx = (fw - sw) / 2; }
-  else { sh = fw / desired; sy = (fh - sh) / 2; }
-  if (cssZoomFallback && zoomVal > 1){
-    const cx = sx + sw/2, cy = sy + sh/2, z = zoomVal;
-    const newSw = sw / z, newSh = sh / z;
-    sx = cx - newSw/2; sy = cy - newSh/2; sw = newSw; sh = newSh;
-  }
-  canvas.width = TARGET_W; canvas.height = TARGET_H;
-  canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
-}
-function getGPSOnce(){ return new Promise(resolve=>{
-  if(!('geolocation' in navigator)) return resolve(null);
-  navigator.geolocation.getCurrentPosition(
-    p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
-    _=>resolve(null),
-    { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-  );
-});}
-
-/* ================== EVENTS ================== */
-const btnStartEl = btnStart;
-btnStartEl.onclick = startCam;
-
-let shooting = false;
-btnShot.onclick = async ()=>{
-  if(!stream || shooting){ toast('Đang xử lý...', 'info'); return; }
-  shooting = true; btnShot.disabled = true;
-
-  try{
-    await ensureAudioCtx();
-    await playShutter();
-    drawToCanvas();
-
-    const mime = 'image/jpeg';
-    const dataUrl = canvas.toDataURL(mime, 0.85);
-    const gps = await getGPSOnce();
-
-    // --- Chuẩn bị dữ liệu mở trang ---
-    const lat = gps?.lat ?? '';
-    const lng = gps?.lng ?? '';
-    const payload = {
-      image_mime: mime,
-      image_b64: (dataUrl.split(',')[1] || ''),
-      ma_kh: MA_KH || '',
-      ma_hd: MA_HD || ''
-    };
-
-    // Lưu ảnh & info phụ qua sessionStorage (trang đích sẽ đọc)
-    sessionStorage.setItem(SESSION_IMG_KEY, JSON.stringify(payload));
-
-    // Điều hướng: truyền lat/lng/lag qua query
-    const targetUrl = new URL('/checkin_khach_hang.html', location.origin); // đổi path nếu cần
-    if (lat !== '') targetUrl.searchParams.set('lat', String(lat));
-    if (lng !== '') targetUrl.searchParams.set('lng', String(lng));
-    if (lat !== '') targetUrl.searchParams.set('lag', String(lat)); // theo yêu cầu
-    if (MA_KH)      targetUrl.searchParams.set('ma_kh', MA_KH);
-    if (MA_HD)      targetUrl.searchParams.set('ma_hd', MA_HD);
-    targetUrl.searchParams.set('img', 'session'); // flag tùy chọn
-
-    location.assign(targetUrl.toString());
-  } catch (err) {
-    console.error(err);
-    toast('Lỗi khi chuẩn bị dữ liệu: ' + (err.message || err), 'err', 4000);
-  } finally {
-    setTimeout(()=>{ shooting = false; btnShot.disabled = !stream; }, 800);
-  }
-};
-
-/* ================== MAP SHEET ================== */
-btnMap.onclick = () => { stopCam(); bar.style.display='none'; mapSheet.classList.add('open'); };
-mapHeader.onclick = () => { mapSheet.classList.remove('open'); bar.style.display='flex'; startCam(); };
-
-/* ================== AUTO BOOT ================== */
-(async()=>{
-  try{
-    const camPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'camera'}) : null;
-    const geoPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'geolocation'}) : null;
-    if (!camPerm || camPerm.state==='granted') await startCam();
-    if (!geoPerm || geoPerm.state==='granted') navigator.geolocation.getCurrentPosition(()=>{},()=>{});
-  }catch(e){}
-})();
-document.addEventListener('visibilitychange',()=>{ if(document.hidden) stopCam(); else if(!mapSheet.classList.contains('open')) startCam(); });
