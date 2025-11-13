@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <!-- Bảo vệ truy cập -->
+  <script src="js/auth_token.js"></script>
+  <script> if (!checkAccess()) { /* auth_token.js sẽ tự redirect login.html */ } </script>
+
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Trang chính</title>
+  <style>
+    :root{
+      --bg:#0b1020;--panel:#12182b;--muted:#8aa0b6;
+      --text:#e9f0f6;--accent:#4da3ff;--ok:#22c55e;--warn:#f59e0b;
+    }
+    *{box-sizing:border-box}
+
+    html,body{
+      margin:0;height:100%;
+      background:var(--bg);color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    }
+
+    /* ===== Topbar với user menu ===== */
+    .topbar{
+      position:sticky;top:0;z-index:50;
+      display:flex;align-items:center;
+      padding:12px 16px;background:var(--bg);
+      border-bottom:1px solid #12182b;
+    }
+    .topbar .title{font-weight:700}
+    .topbar .spacer{flex:1}
+    .usermenu{position:relative}
+    .userbtn{
+      display:flex;align-items:center;gap:8px;
+      background:#12182b;color:#e9f0f6;
+      border:1px solid #22304a;border-radius:10px;
+      padding:8px 12px;cursor:pointer;font-weight:600;
+    }
+    .userbtn:focus{outline:2px solid #4da3ff55;outline-offset:2px}
+    .usericon{opacity:.85}
+    .caret{opacity:.8;margin-left:4px}
+    .dropdown{
+      position:absolute;right:0;top:calc(100% + 8px);
+      min-width:200px;background:#0f1830;border:1px solid #22304a;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      border-radius:12px;padding:6px;display:none;
+    }
+    .dropdown.open{display:block}
+    .dropdown .item{
+      width:100%;text-align:left;background:transparent;border:0;
+      color:#e6edff;padding:10px 12px;border-radius:8px;cursor:pointer;
+    }
+    .dropdown .item:hover{background:#1a2542}
+    .dropdown .item.danger{color:#ff6b6b}
+    .dropdown hr{border:0;height:1px;background:#22304a;margin:6px 2px}
+
+    /* ===== Nội dung trung tâm ===== */
+    .center{
+      min-height:calc(100dvh - 64px);
+      display:flex;align-items:center;justify-content:center;
+      padding:24px;
+    }
+    .wrap{text-align:center}
+    h1{margin-bottom:28px;font-size:26px}
+
+    .btn{
+      display:inline-block;padding:14px 28px;margin:10px;border:0;
+      border-radius:14px;font-size:17px;font-weight:600;cursor:pointer;
+      transition:.2s;color:#001226;
+    }
+    .btn:hover{filter:brightness(1.1)}
+    .btn-checkin{background:var(--accent)}
+    .btn-phan-tich{background:var(--ok)}
+    .btn-bao-cao{background:var(--warn)}
+  </style>
+</head>
+<body>
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="title">📋 Trang chính</div>
+    <div class="spacer"></div>
+
+    <!-- User Menu góc phải -->
+    <div class="usermenu" id="userMenu">
+      <button class="userbtn" id="userBtn" aria-haspopup="true" aria-expanded="false" title="Tài khoản">
+        <span class="usericon">👤</span>
+        <span class="username" id="username">Tài khoản</span>
+        <span class="caret">▾</span>
+      </button>
+      <div class="dropdown" id="userDropdown" role="menu" aria-hidden="true">
+        <!-- Có thể thêm các mục khác sau này -->
+        <!-- <button class="item" id="profileBtn">Hồ sơ</button> -->
+        <!-- <button class="item" id="changePwdBtn">Đổi mật khẩu</button> -->
+        <!-- <hr> -->
+        <button class="item danger" id="logoutBtn">Đăng xuất</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Nội dung giữa trang -->
+  <main class="center">
+    <div class="wrap">
+      <h1>Chọn chức năng</h1>
+      <button class="btn btn-checkin"   onclick="go('app_checkin.html')">✅ Check-in</button>
+      <button class="btn btn-phan-tich" onclick="go('phantich.html')">📊 Phân tích</button>
+      <button class="btn btn-bao-cao"   onclick="go('baocaoh.html')">📑 Báo cáo</button>
+    </div>
+  </main>
+
+  <script>
+    // ===== Điều hướng nút chính =====
+    function go(path){ location.href = path; }
+
+    // ===== Lấy thông tin NV đã đăng nhập =====
+    function safeParse(s){ try{ return JSON.parse(s); }catch{ return null; } }
+    function getNV(){
+      const nv  = safeParse(localStorage.getItem('nv'));
+      if (nv && nv.ma_nv) return { ma_nv:nv.ma_nv, ten_nv:nv.ten_nv, hoat_dong:nv.hoat_dong!==false };
+      const ctx = safeParse(sessionStorage.getItem('nv_ctx'));
+      if (ctx && ctx.ma_nv) return { ma_nv:ctx.ma_nv, ten_nv:ctx.ten_nv, hoat_dong:true };
+      return null;
+    }
+
+    // ===== Khởi tạo menu người dùng =====
+    (function initUserMenu(){
+      const btn   = document.getElementById('userBtn');
+      const menu  = document.getElementById('userDropdown');
+      const nameEl= document.getElementById('username');
+
+      const user = getNV();
+      if (!user || user.hoat_dong === false){
+        // nếu chưa đăng nhập -> về login
+        location.replace('./login.html');
+        return;
+      }
+      nameEl.textContent = user.ten_nv || user.ma_nv || 'Tài khoản';
+
+      function openMenu(){ menu.classList.add('open'); btn.setAttribute('aria-expanded','true'); menu.setAttribute('aria-hidden','false'); }
+      function closeMenu(){ menu.classList.remove('open'); btn.setAttribute('aria-expanded','false'); menu.setAttribute('aria-hidden','true'); }
+      function toggleMenu(){ menu.classList.contains('open') ? closeMenu() : openMenu(); }
+
+      btn.addEventListener('click', (e)=>{ e.stopPropagation(); toggleMenu(); });
+      document.addEventListener('click', (e)=>{ if(!menu.contains(e.target) && e.target!==btn) closeMenu(); });
+      document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') closeMenu(); });
+
+      // Đăng xuất
+      document.getElementById('logoutBtn').addEventListener('click', ()=>{
+        closeMenu();
+        try{
+          localStorage.removeItem('nv');
+          localStorage.removeItem('last_ma_nv');
+          sessionStorage.removeItem('nv_ctx');
+        }catch{}
+        location.replace('./login.html');
+      });
+    })();
+  </script>
+</body>
+</html>

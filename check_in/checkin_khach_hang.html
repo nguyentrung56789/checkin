@@ -1,0 +1,488 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Danh sách khách hàng (nv_checkin_khach_hang)</title>
+
+  <style>
+    :root{ --bg:#0b1020; --panel:#12182b; --muted:#8aa0b6; --text:#e9f0f6; --accent:#4da3ff; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+    *{box-sizing:border-box}
+    html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    h1{font-size:24px;margin:0 0 16px}
+    .bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+    .btn{padding:8px 12px;border:0;border-radius:12px;background:var(--panel);color:var(--text);cursor:pointer}
+    .btn:hover{filter:brightness(1.08)}
+    .btn-primary{background:var(--accent);color:#001226}
+    .btn-ok{background:var(--ok)}
+    .btn-warn{background:var(--warn)}
+    .input{padding:8px 10px;background:#0f1628;border:1px solid #243153;color:var(--text);border-radius:12px}
+    .muted{color:var(--muted);font-size:12px}
+    .table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:14px;overflow:hidden}
+    thead th{font-weight:600;text-align:left;font-size:13px;color:var(--muted);background:#0f1628}
+    th,td{padding:10px 12px;border-bottom:1px solid #19223c}
+    tbody tr:hover{background:#0f1930}
+    .col-actions{white-space:nowrap}
+    .ma-kh-btn{background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer}
+    .ma-kh-btn:hover{text-decoration:underline}
+    .modal-wrap{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);z-index:1000}
+    .modal{width:min(560px,92vw);background:var(--panel);border:1px solid #1e2943;border-radius:16px;padding:16px}
+    .modal h3{margin:0 0 12px;font-size:18px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .grid .span2{grid-column:1 / span 2}
+    .row{display:flex;gap:8px;align-items:center}
+    .toast{position:fixed;right:14px;bottom:14px;background:#0f1628;border:1px solid #243153;padding:10px 12px;border-radius:12px;display:none}
+  </style>
+
+  <!-- /js/internal_key.js cần có getConfig('url'|'anon') và (tuỳ) getInternalKey() -->
+  <script src="/js/internal_key.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="bar">
+    <button id="btnAdd" class="btn btn-primary">+ Thêm</button>
+
+    <!-- Dropdown chọn bán kính (m) -->
+    <label class="row" style="gap:6px">
+      <span class="muted">Bán kính</span>
+      <select id="radiusSelect" class="input">
+        <option value="20">20m</option>
+        <option value="50" selected>50m</option>
+        <option value="100">100m</option>
+        <option value="500">500m</option>
+      </select>
+    </label>
+    <!-- ĐÃ BỎ: Tìm kiếm + Tải lại -->
+  </div>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th style="width:160px">Mã KH</th>
+        <th>Tên KH</th>
+        <!-- ĐÃ BỎ: cột Địa chỉ -->
+        <th style="width:160px">Điện thoại</th>
+        <th class="col-actions" style="width:120px">Thao tác</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="4" class="muted">Đang tải...</td></tr>
+    </tbody>
+  </table>
+
+  <div id="countInfo" class="muted" style="margin-top:8px"></div>
+</div>
+
+<!-- Modal thêm/sửa -->
+<div class="modal-wrap" id="modalWrap">
+  <div class="modal">
+    <h3 id="modalTitle">Thêm khách hàng</h3>
+    <div class="grid">
+      <label class="span2">Mã KH (khóa): <input id="f_ma_kh" class="input" placeholder="Bắt buộc"></label>
+      <label class="span2">Tên KH: <input id="f_ten_kh" class="input" placeholder="VD: Nguyễn Văn A"></label>
+      <label class="span2">Địa chỉ: <input id="f_dia_chi" class="input" placeholder="Số nhà, đường..."></label>
+      <label class="span2">Điện thoại: <input id="f_dien_thoai" class="input" placeholder="VD: 09xxxxxxxx"></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnSave" class="btn btn-ok">Lưu</button>
+      <button id="btnCancel" class="btn">Hủy</button>
+      <span class="right muted" id="modalHint"></span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==== Tải supabase-js nếu chưa có ==== */
+async function getSupabaseLib(){
+  if(window.supabase?.createClient) return window.supabase;
+  const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
+  return mod;
+}
+
+(async()=>{
+  const $  = s=>document.querySelector(s);
+  const $$ = s=>Array.from(document.querySelectorAll(s));
+  const toast=(msg,t='')=>{
+    const el=$('#toast');
+    el.textContent=msg;el.style.display='block';
+    el.style.borderColor=t==='err'?'#ef4444':t==='ok'?'#22c55e':'#243153';
+    clearTimeout(toast._t); toast._t=setTimeout(()=>el.style.display='none',2200);
+  };
+
+  // helper escape attribute (cho data-*)
+  function escAttr(v){
+    return String(v ?? '')
+      .replace(/&/g,'&amp;')
+      .replace(/"/g,'&quot;')
+      .replace(/</g,'&lt;');
+  }
+
+  const TABLE='nv_checkin_khach_hang';
+  const SESSION_IMG_KEY='CHECKIN_IMAGE_PAYLOAD'; // Ảnh (nếu có) lưu từ trang camera
+  let SB=null; let CURRENT=null;
+
+  // ===== Helpers =====
+  function getLatLngFromURL(){
+    const qp = new URLSearchParams(location.search);
+    const latRaw = qp.get('lat') ?? qp.get('latitude');
+    const lngRaw = qp.get('lng') ?? qp.get('long') ?? qp.get('lon') ?? qp.get('longitude');
+    const lat = Number(latRaw), lng = Number(lngRaw);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
+    return null;
+  }
+  function initRadiusFromURLOrDefault(){
+    const sel = $('#radiusSelect');
+    const qp = new URLSearchParams(location.search);
+    let r = Number(qp.get('radius'));        // mét
+    const rkm = Number(qp.get('radius_km')); // km
+    if (Number.isFinite(rkm) && rkm > 0) r = rkm * 1000;
+    if (!Number.isFinite(r) || r <= 0) r = 50; // mặc định 50m
+    if ([20,50,100,500].includes(Math.round(r))){
+      sel.value = String(Math.round(r));
+    } else {
+      sel.value = '50';
+    }
+  }
+  function getRadiusFromUI(){
+    const v = Number($('#radiusSelect').value);
+    return Number.isFinite(v) && v>0 ? v : 50;
+  }
+  function getCurrentNVID(){
+    try{
+      const s = sessionStorage.getItem('nv_ctx');
+      if (s){ const o = JSON.parse(s); if (o?.ma_nv) return String(o.ma_nv); }
+    }catch{}
+    try{
+      const s2 = localStorage.getItem('nv');
+      if (s2){ const o2 = JSON.parse(s2); if (o2?.ma_nv) return String(o2.ma_nv); }
+    }catch{}
+    return null;
+  }
+  function getCurrentNVName(){
+    try{
+      const s = sessionStorage.getItem('nv_ctx');
+      if (s){ const o = JSON.parse(s); if (o?.ten_nv) return String(o.ten_nv); }
+    }catch{}
+    try{
+      const s2 = localStorage.getItem('nv');
+      if (s2){ const o2 = JSON.parse(s2); if (o2?.ten_nv) return String(o2.ten_nv); }
+    }catch{}
+    return null;
+  }
+
+  function getImagePayloadFromSession(){
+    try{
+      const raw = sessionStorage.getItem(SESSION_IMG_KEY);
+      if(!raw) return null;
+      const p = JSON.parse(raw);
+      if (p && typeof p.image_b64 === 'string' && p.image_b64.length > 0){
+        return p; // { image_mime, image_b64, ma_kh?, ma_hd? }
+      }
+    }catch(e){}
+    return null;
+  }
+
+  // ===== Webhook URL (gắn cứng) =====
+  function getWebhookURL(){
+    return 'https://dhsybbqoe.datadex.vn/webhook/hoadon';
+  }
+
+  // ===== Đóng tab sau khi gửi webhook thành công (best-effort) =====
+  function closeTabAfterWebhook(){
+    try { window.close(); } catch {}
+    setTimeout(()=>{
+      try { window.open('', '_self'); window.close(); } catch {}
+      if (!document.hidden) {
+        try { location.replace('about:blank'); } catch {}
+        setTimeout(()=>{ try{ history.back(); }catch{} }, 100);
+      }
+    }, 400);
+  }
+
+  // ===== Gửi webhook: POST JSON trước, nếu 405 thì fallback GET =====
+  async function postWebhook(payload){
+    const url = getWebhookURL();
+    const headers = { 'content-type':'application/json' };
+    try{
+      if (typeof getInternalKey === 'function'){
+        headers['x-internal-key'] = getInternalKey();
+      }
+    }catch{}
+
+    try{
+      const res = await fetch(url, { method:'POST', headers, body: JSON.stringify(payload) });
+      const text = await res.text().catch(()=> '');
+      if (res.ok) return { ok:true, status:res.status, text };
+      if (res.status !== 405) return { ok:false, status:res.status, text };
+    }catch(e){}
+
+    const qs = new URLSearchParams(Object.entries(payload).map(([k,v])=>[k, String(v ?? '')])).toString();
+    const getUrl = url + (url.includes('?') ? '&' : '?') + qs;
+    try{
+      const res2 = await fetch(getUrl, { method:'GET', headers: { 'x-internal-key': headers['x-internal-key'] || '' } });
+      const text2 = await res2.text().catch(()=> '');
+      return { ok: res2.ok, status: res2.status, text: text2 };
+    }catch(e2){
+      return { ok:false, status:0, text:String(e2) };
+    }
+  }
+
+  // ===== Modal =====
+  function openModal(mode,row=null){
+    CURRENT={mode};
+    $('#modalTitle').textContent=mode==='add'?'Thêm khách hàng':'Sửa khách hàng';
+    $('#f_ma_kh').disabled=(mode==='edit');
+    if(mode==='edit'&&row){
+      $('#f_ma_kh').value=row.ma_kh||'';
+      $('#f_ten_kh').value=row.ten_kh||'';
+      $('#f_dia_chi').value=row.dia_chi||'';
+      $('#f_dien_thoai').value=row.dien_thoai||'';
+      CURRENT.ma_kh=row.ma_kh;
+    }else{
+      $('#f_ma_kh').value='';$('#f_ten_kh').value='';$('#f_dia_chi').value='';$('#f_dien_thoai').value='';
+    }
+    $('#modalWrap').style.display='flex';
+  }
+  const closeModal=()=>$('#modalWrap').style.display='none';
+
+  // ===== Supabase client =====
+  async function makeClient(){
+    const url=getConfig('url'), anon=getConfig('anon');
+    const lib=await getSupabaseLib();
+    return lib.createClient(url,anon,{auth:{persistSession:false}});
+  }
+
+  // ===== List & render =====
+  async function loadData(){
+    $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
+    const {data,error,count}=await SB
+      .from(TABLE)
+      .select('ma_kh,ten_kh,dia_chi,dien_thoai',{count:'exact'})
+      .order('ten_kh',{ascending:true})
+      .limit(500);
+    if(error){
+      console.error(error);
+      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Lỗi Supabase: ${error.message}</td></tr>`;
+      return;
+    }
+    $('#countInfo').textContent=`${count??(data?.length||0)} dòng`;
+    renderRows(data||[]);
+  }
+
+function renderRows(rows){
+  if(!rows.length){
+    $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+    return;
+  }
+  const html = rows.map(r=>`
+    <tr data-id="${escAttr(r.ma_kh)}"
+        data-ten_kh="${escAttr(r.ten_kh||'')}"
+        data-dien_thoai="${escAttr(r.dien_thoai||'')}">
+
+      <td class="col-ma">
+        <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
+      </td>
+      <td class="col-ten">${r.ten_kh || ''}</td>
+      <td class="col-phone">${r.dien_thoai || ''}</td>
+      <td class="col-actions">
+        <button class="btn btn-warn btn-edit">Sửa</button>
+      </td>
+    </tr>`).join('');
+
+  $('#tbody').innerHTML = html;
+
+  $$('#tbody .btn-edit').forEach(b=>b.addEventListener('click',onEditClick));
+  $$('#tbody .ma-kh-btn').forEach(b=>b.addEventListener('click',()=>onMaKHClick(b.dataset.id)));
+}
+
+
+  function onEditClick(e){
+    const tr=e.target.closest('tr');
+    if(!tr)return;
+    const row={
+      ma_kh: tr.getAttribute('data-id'),
+      ten_kh: tr.dataset.ten_kh || tr.children[1].textContent,
+      dia_chi: tr.dataset.dia_chi || '',
+      dien_thoai: tr.dataset.dien_thoai || tr.children[2].textContent
+    };
+    openModal('edit',row);
+  }
+
+  // ===== Click Mã KH → gửi webhook (kèm ảnh base64 nếu có) =====
+  async function onMaKHClick(ma_kh){
+    const coords = getLatLngFromURL();
+    if (!coords){
+      toast('Thiếu toạ độ lat/lng trong URL — không thể checkin','err');
+      return;
+    }
+    const ma_nv  = getCurrentNVID();
+    const ten_nv = getCurrentNVName();
+    const img    = getImagePayloadFromSession();
+
+    const payload = {
+      action: 'checkin',
+      ma_kh,
+      ma_nv: ma_nv || null,
+      ten_nv: ten_nv || null,
+      lat: Number(coords.lat),
+      lng: Number(coords.lng),
+      image_mime: img?.image_mime || 'image/jpeg',
+      image_b64:  img?.image_b64  || ''
+    };
+
+    try{
+      const res = await postWebhook(payload);
+      if (res.ok){
+        toast(`Đã gửi checkin ${ma_kh}`,'ok');
+        setTimeout(closeTabAfterWebhook, 400); // đóng tab
+      } else {
+        toast(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`,'err');
+      }
+    }catch(err){
+      console.error(err);
+      toast('Gửi webhook thất bại','err');
+    }
+  }
+
+  // ===== Lưu: tự lấy lat/lng từ URL và lọc lại theo bán kính =====
+  async function saveForm(){
+    const ma_kh=$('#f_ma_kh').value.trim();
+    const ten_kh=$('#f_ten_kh').value.trim();
+    const dia_chi=$('#f_dia_chi').value.trim();
+    const dien_thoai=$('#f_dien_thoai').value.trim();
+    if(!ma_kh){toast('Mã KH bắt buộc','err');return;}
+
+    const coords = getLatLngFromURL();
+    const lat = coords?.lat ?? null;
+    const lng = coords?.lng ?? null;
+
+    if(CURRENT?.mode==='add'){
+      const {error}=await SB.from(TABLE).insert([{ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng}]);
+      if(error){toast('Thêm thất bại','err');return;}
+      toast('Đã thêm','ok');
+    }else{
+      const {error}=await SB.from(TABLE).update({ten_kh,dia_chi,dien_thoai,lat,lng}).eq('ma_kh',CURRENT.ma_kh);
+      if(error){toast('Sửa thất bại','err');return;}
+      toast('Đã lưu','ok');
+    }
+
+    closeModal();
+    if (coords){
+      runNearby(coords.lat, coords.lng, getRadiusFromUI());
+    } else {
+      loadData();
+    }
+  }
+
+  // ===== Nearby runner (lọc theo lat/lng + radius) =====
+  async function runNearby(lat, lng, radius){
+    const $tbody = $('#tbody');
+    $tbody.innerHTML=`<tr><td colspan="4" class="muted">Đang lọc theo bán kính...</td></tr>`;
+
+    const R = 6371000, d2r = Math.PI/180, latR = lat*d2r;
+    const delta = (radius / R) * (180/Math.PI);
+    const cosLat = Math.max(1e-6, Math.cos(latR));
+    const minLat = lat - delta, maxLat = lat + delta;
+    const minLng = lng - delta/cosLat;
+    const maxLng = lng + delta/cosLat;
+
+    const { data, error } = await SB
+      .from(TABLE)
+      .select('ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng', { count: 'exact' })
+      .not('lat','is',null).not('lng','is',null)
+      .gte('lat', minLat).lte('lat', maxLat)
+      .gte('lng', minLng).lte('lng', maxLng)
+      .limit(1000);
+
+    if (error) {
+      console.error(error);
+      toast('Lỗi truy vấn Supabase','err');
+      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+      $('#countInfo').textContent = `0 dòng (lỗi truy vấn)`;
+      return;
+    }
+
+    const rows = (Array.isArray(data)?data:[])
+      .map(r=>({ ...r, rlat:Number(r.lat), rlng:Number(r.lng) }))
+      .filter(r => Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
+
+    let nearby = rows.map(r => {
+      const dLat = (r.rlat - lat) * d2r;
+      const dLng = (r.rlng - lng) * d2r;
+      const a = Math.sin(dLat/2)**2 + Math.cos(latR)*Math.cos(r.rlat*d2r)*Math.sin(dLng/2)**2;
+      const dist = 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return { ...r, dist: Math.round(dist) };
+    }).filter(r => r.dist <= radius)
+      .sort((a,b)=>a.dist-b.dist);
+
+    if (nearby.length === 0) {
+      toast(`Không có KH trong ${(Math.round(radius/100)/10)} km`, 'info');
+      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+      $('#countInfo').textContent = `0 dòng (lọc ${Math.round(radius)}m)`;
+    } else {
+      toast(`Tìm thấy ${nearby.length} KH trong ${(Math.round(radius/100)/10)} km`, 'ok');
+const html = nearby.map(r=>`
+  <tr data-id="${escAttr(r.ma_kh)}"
+      data-ten_kh="${escAttr(r.ten_kh||'')}"
+      data-dien_thoai="${escAttr(r.dien_thoai||'')}">
+
+    <td class="col-ma">
+      <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
+    </td>
+    <td class="col-ten">
+      ${escAttr(r.ten_kh||'')}
+      <span class="muted"> • ${r.dist}m</span>
+    </td>
+    <td class="col-phone">${r.dien_thoai || ''}</td>
+    <td class="col-actions">
+      <button class="btn btn-warn btn-edit">Sửa</button>
+    </td>
+  </tr>
+`).join('');
+
+      $('#tbody').innerHTML = html;
+      $('#countInfo').textContent = `${nearby.length} dòng (lọc ${Math.round(radius)}m)`;
+
+      $$('#tbody .btn-edit').forEach(b=>b.addEventListener('click',onEditClick));
+      $$('#tbody .ma-kh-btn').forEach(b=>b.addEventListener('click',()=>onMaKHClick(b.dataset.id)));
+    }
+  }
+
+  // ===== events =====
+  $('#btnAdd').addEventListener('click',()=>openModal('add'));
+  $('#btnCancel').addEventListener('click',closeModal);
+  $('#btnSave').addEventListener('click',saveForm);
+
+  // Đổi bán kính → lọc lại
+  $('#radiusSelect').addEventListener('change',()=>{
+    const coords = getLatLngFromURL();
+    const r = getRadiusFromUI();
+    if (coords) runNearby(coords.lat, coords.lng, r);
+    else toast('Thiếu toạ độ lat/lng trong URL để lọc theo bán kính', 'err');
+  });
+
+  // ======================= init =======================
+  try {
+    SB = await makeClient();
+    initRadiusFromURLOrDefault();
+
+    const coords = getLatLngFromURL();
+    if (coords) {
+      const r = getRadiusFromUI();
+      toast(`lat=${coords.lat.toFixed(6)} • lng=${coords.lng.toFixed(6)} • r=${Math.round(r)}m`, 'ok');
+      runNearby(coords.lat, coords.lng, r);
+    } else {
+      loadData();
+    }
+  } catch (e) {
+    console.error(e);
+    $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Lỗi khởi tạo: ${e.message}</td></tr>`;
+  }
+})();
+</script>
+</body>
+</html>
