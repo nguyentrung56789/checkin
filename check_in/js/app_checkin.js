@@ -472,8 +472,19 @@ btnShot && (btnShot.onclick = async ()=>{
 btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
 
 /* ================== AUTO BOOT ================== */
-// Chỉ auto bật cam khi TRƯỚC ĐÓ đã được cấp quyền (granted).
-// Nếu chưa granted → KHÔNG auto, đợi user bấm nút btnStart.
+
+// helper: đảm bảo stage + UI hiện ra (kể cả khi chưa bật cam)
+function showStage(){
+  if (stage && !stage.classList.contains('ready')) {
+    stage.classList.add('ready');
+  }
+}
+
+/** 
+ * Chỉ auto bật cam nếu đã được cấp quyền từ lần trước (state = 'granted').
+ * Nếu chưa được cấp / bị hỏi lại → không auto, chỉ hiện UI + toast 
+ * để người dùng tự bấm nút "Bật camera".
+ */
 (async () => {
   try {
     if (navigator.permissions && navigator.permissions.query) {
@@ -487,7 +498,9 @@ btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
         // Đã cho phép từ lần trước → auto bật cho mượt
         await startCam();
       } else {
-        // 'prompt' hoặc 'denied' → không auto, chỉ nhắc người dùng
+        // 'prompt' hoặc 'denied' → KHÔNG auto, chỉ mở UI
+        showStage();
+        if (btnShot) btnShot.disabled = true;
         toast('Bấm nút "Bật camera" để mở cam.', 'info', 3000);
       }
 
@@ -496,18 +509,21 @@ btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
         navigator.geolocation.getCurrentPosition(()=>{},()=>{});
       }
 
-      // Nếu user đổi quyền trong lúc đang mở
+      // Nếu trạng thái quyền camera thay đổi trong lúc đang mở trang
       camPerm.onchange = () => {
         if (camPerm.state === 'granted') {
           toast('Đã cấp quyền camera, bấm "Bật camera" để dùng.', 'ok', 2500);
         }
       };
     } else {
-      // Không hỗ trợ Permissions API → KHÔNG auto start
+      // Không hỗ trợ Permissions API → vẫn phải hiện UI cho user bấm
+      showStage();
+      if (btnShot) btnShot.disabled = true;
       toast('Bấm nút "Bật camera" để mở cam.', 'info', 3000);
     }
   } catch (e) {
     console.warn('Auto boot error', e);
+    showStage();
   }
 })();
 
@@ -517,8 +533,11 @@ document.addEventListener('visibilitychange', () => {
     // Ẩn tab → tắt camera cho nhẹ máy
     stopCam();
   } else {
-    // Khi quay lại → KHÔNG tự bật lại camera (để tránh bị chặn quyền)
-    toast('Bấm nút "Bật camera" để mở lại cam.', 'info', 2500);
-    // Người dùng muốn dùng tiếp thì bấm lại nút btnStart → startCam()
+    // Quay lại: không tự bật cam, chỉ hiện UI + nhắc
+    showStage();
+    if (!stream) {
+      if (btnShot) btnShot.disabled = true;
+      toast('Bấm nút "Bật camera" để mở lại cam.', 'info', 2500);
+    }
   }
 });
