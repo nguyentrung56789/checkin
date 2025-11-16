@@ -6,33 +6,142 @@
   <title>Danh sách khách hàng (nv_checkin_khach_hang)</title>
 
   <style>
-    :root{ --bg:#0b1020; --panel:#12182b; --muted:#8aa0b6; --text:#e9f0f6; --accent:#4da3ff; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+    :root{
+      --bg:#0b1020;
+      --panel:#12182b;
+      --muted:#8aa0b6;
+      --text:#e9f0f6;
+      --accent:#4da3ff;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --err:#ef4444;
+    }
     *{box-sizing:border-box}
-    html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    html,body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif
+    }
     .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
     h1{font-size:24px;margin:0 0 16px}
-    .bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
-    .btn{padding:8px 12px;border:0;border-radius:12px;background:var(--panel);color:var(--text);cursor:pointer}
+
+    .bar{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      margin-bottom:12px;
+      flex-wrap:wrap;
+    }
+    .bar-left{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+      flex:1;
+      min-width:0;
+    }
+
+    .btn{
+      padding:8px 12px;
+      border:0;
+      border-radius:12px;
+      background:var(--panel);
+      color:var(--text);
+      cursor:pointer
+    }
     .btn:hover{filter:brightness(1.08)}
     .btn-primary{background:var(--accent);color:#001226}
-    .btn-ok{background:var(--ok)}
+    .btn-ok{background:var(--ok);color:#02220f}
     .btn-warn{background:var(--warn)}
-    .input{padding:8px 10px;background:#0f1628;border:1px solid #243153;color:var(--text);border-radius:12px}
+    .input{
+      padding:8px 10px;
+      background:#0f1628;
+      border:1px solid #243153;
+      color:var(--text);
+      border-radius:12px
+    }
     .muted{color:var(--muted);font-size:12px}
-    .table{width:100%;border-collapse:collapse;background:var(--panel);border-radius:14px;overflow:hidden}
-    thead th{font-weight:600;text-align:left;font-size:13px;color:var(--muted);background:#0f1628}
-    th,td{padding:10px 12px;border-bottom:1px solid #19223c}
+    .table{
+      width:100%;
+      border-collapse:collapse;
+      background:var(--panel);
+      border-radius:14px;
+      overflow:hidden
+    }
+    thead th{
+      font-weight:600;
+      text-align:left;
+      font-size:13px;
+      color:var(--muted);
+      background:#0f1628
+    }
+    th,td{
+      padding:10px 12px;
+      border-bottom:1px solid #19223c
+    }
     tbody tr:hover{background:#0f1930}
     .col-actions{white-space:nowrap}
-    .ma-kh-btn{background:none;border:none;color:var(--accent);font-weight:600;cursor:pointer}
-    .ma-kh-btn:hover{text-decoration:underline}
-    .modal-wrap{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(2px);z-index:1000}
-    .modal{width:min(560px,92vw);background:var(--panel);border:1px solid #1e2943;border-radius:16px;padding:16px}
+
+    /* NÚT MÃ KH: xanh lá, dễ bấm */
+    .ma-kh-btn{
+      border:0;
+      border-radius:999px;
+      padding:6px 12px;
+      background:var(--ok);
+      color:#02220f;
+      font-weight:600;
+      cursor:pointer;
+      box-shadow:0 0 0 1px rgba(0,0,0,.25),0 6px 14px rgba(0,0,0,.4);
+      transition:transform .06s ease, box-shadow .06s ease, filter .08s ease;
+    }
+    .ma-kh-btn:hover{
+      filter:brightness(1.06);
+    }
+    .ma-kh-btn:active{
+      transform:translateY(1px) scale(.97);
+      box-shadow:0 2px 6px rgba(0,0,0,.55);
+    }
+
+    .modal-wrap{
+      position:fixed;
+      inset:0;
+      display:none;
+      align-items:center;
+      justify-content:center;
+      background:rgba(0,0,0,.4);
+      backdrop-filter:blur(2px);
+      z-index:1000
+    }
+    .modal{
+      width:min(560px,92vw);
+      background:var(--panel);
+      border:1px solid #1e2943;
+      border-radius:16px;
+      padding:16px
+    }
     .modal h3{margin:0 0 12px;font-size:18px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
     .grid .span2{grid-column:1 / span 2}
     .row{display:flex;gap:8px;align-items:center}
-    .toast{position:fixed;right:14px;bottom:14px;background:#0f1628;border:1px solid #243153;padding:10px 12px;border-radius:12px;display:none}
+
+    /* TOAST: hiển thị giữa màn hình */
+    .toast{
+      position:fixed;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-50%);
+      min-width:min(92vw,420px);
+      text-align:center;
+      background:#0f1628;
+      border:1px solid #243153;
+      padding:14px 18px;
+      border-radius:16px;
+      display:none;
+      z-index:2000;
+      box-shadow:0 14px 40px rgba(0,0,0,.6);
+      font-size:15px;
+    }
   </style>
 
   <!-- /js/internal_key.js cần có getConfig('url'|'anon') và (tuỳ) getInternalKey() -->
@@ -42,19 +151,25 @@
 <div class="wrap">
 
   <div class="bar">
-    <button id="btnAdd" class="btn btn-primary">+ Thêm</button>
+    <div class="bar-left">
+      <button id="btnAdd" class="btn btn-primary">+ Thêm</button>
 
-    <!-- Dropdown chọn bán kính (m) -->
-    <label class="row" style="gap:6px">
-      <span class="muted">Bán kính</span>
-      <select id="radiusSelect" class="input">
-        <option value="20">20m</option>
-        <option value="50" selected>50m</option>
-        <option value="100">100m</option>
-        <option value="500">500m</option>
-      </select>
-    </label>
-    <!-- ĐÃ BỎ: Tìm kiếm + Tải lại -->
+      <!-- Dropdown chọn bán kính (m) -->
+      <label class="row" style="gap:6px">
+        <span class="muted">Bán kính</span>
+        <select id="radiusSelect" class="input">
+          <option value="20">20m</option>
+          <option value="50" selected>50m</option>
+          <option value="100">100m</option>
+          <option value="500">500m</option>
+        </select>
+      </label>
+    </div>
+
+    <!-- Nút mở app_checkin -->
+    <button id="btnOpenCheckin" class="btn btn-ok">
+      📷 Checkin
+    </button>
   </div>
 
   <table class="table">
@@ -108,9 +223,11 @@ async function getSupabaseLib(){
   const $$ = s=>Array.from(document.querySelectorAll(s));
   const toast=(msg,t='')=>{
     const el=$('#toast');
-    el.textContent=msg;el.style.display='block';
+    el.textContent=msg;
+    el.style.display='block';
     el.style.borderColor=t==='err'?'#ef4444':t==='ok'?'#22c55e':'#243153';
-    clearTimeout(toast._t); toast._t=setTimeout(()=>el.style.display='none',2200);
+    clearTimeout(toast._t);
+    toast._t=setTimeout(()=>el.style.display='none',2200);
   };
 
   // helper escape attribute (cho data-*)
@@ -191,18 +308,6 @@ async function getSupabaseLib(){
     return 'https://dhsybbqoe.datadex.vn/webhook/hoadon';
   }
 
-  // ===== Đóng tab sau khi gửi webhook thành công (best-effort) =====
-  function closeTabAfterWebhook(){
-    try { window.close(); } catch {}
-    setTimeout(()=>{
-      try { window.open('', '_self'); window.close(); } catch {}
-      if (!document.hidden) {
-        try { location.replace('about:blank'); } catch {}
-        setTimeout(()=>{ try{ history.back(); }catch{} }, 100);
-      }
-    }, 400);
-  }
-
   // ===== Gửi webhook: POST JSON trước, nếu 405 thì fallback GET =====
   async function postWebhook(payload){
     const url = getWebhookURL();
@@ -243,7 +348,10 @@ async function getSupabaseLib(){
       $('#f_dien_thoai').value=row.dien_thoai||'';
       CURRENT.ma_kh=row.ma_kh;
     }else{
-      $('#f_ma_kh').value='';$('#f_ten_kh').value='';$('#f_dia_chi').value='';$('#f_dien_thoai').value='';
+      $('#f_ma_kh').value='';
+      $('#f_ten_kh').value='';
+      $('#f_dia_chi').value='';
+      $('#f_dien_thoai').value='';
     }
     $('#modalWrap').style.display='flex';
   }
@@ -273,32 +381,31 @@ async function getSupabaseLib(){
     renderRows(data||[]);
   }
 
-function renderRows(rows){
-  if(!rows.length){
-    $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-    return;
+  function renderRows(rows){
+    if(!rows.length){
+      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+      return;
+    }
+    const html = rows.map(r=>`
+      <tr data-id="${escAttr(r.ma_kh)}"
+          data-ten_kh="${escAttr(r.ten_kh||'')}"
+          data-dien_thoai="${escAttr(r.dien_thoai||'')}">
+
+        <td class="col-ma">
+          <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
+        </td>
+        <td class="col-ten">${r.ten_kh || ''}</td>
+        <td class="col-phone">${r.dien_thoai || ''}</td>
+        <td class="col-actions">
+          <button class="btn btn-warn btn-edit">Sửa</button>
+        </td>
+      </tr>`).join('');
+
+    $('#tbody').innerHTML = html;
+
+    $$('#tbody .btn-edit').forEach(b=>b.addEventListener('click',onEditClick));
+    $$('#tbody .ma-kh-btn').forEach(b=>b.addEventListener('click',()=>onMaKHClick(b.dataset.id)));
   }
-  const html = rows.map(r=>`
-    <tr data-id="${escAttr(r.ma_kh)}"
-        data-ten_kh="${escAttr(r.ten_kh||'')}"
-        data-dien_thoai="${escAttr(r.dien_thoai||'')}">
-
-      <td class="col-ma">
-        <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
-      </td>
-      <td class="col-ten">${r.ten_kh || ''}</td>
-      <td class="col-phone">${r.dien_thoai || ''}</td>
-      <td class="col-actions">
-        <button class="btn btn-warn btn-edit">Sửa</button>
-      </td>
-    </tr>`).join('');
-
-  $('#tbody').innerHTML = html;
-
-  $$('#tbody .btn-edit').forEach(b=>b.addEventListener('click',onEditClick));
-  $$('#tbody .ma-kh-btn').forEach(b=>b.addEventListener('click',()=>onMaKHClick(b.dataset.id)));
-}
-
 
   function onEditClick(e){
     const tr=e.target.closest('tr');
@@ -337,8 +444,8 @@ function renderRows(rows){
     try{
       const res = await postWebhook(payload);
       if (res.ok){
-        toast(`Đã gửi checkin ${ma_kh}`,'ok');
-        setTimeout(closeTabAfterWebhook, 400); // đóng tab
+        // Thông báo to, ở giữa (theo CSS .toast)
+        toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
       } else {
         toast(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`,'err');
       }
@@ -425,24 +532,24 @@ function renderRows(rows){
       $('#countInfo').textContent = `0 dòng (lọc ${Math.round(radius)}m)`;
     } else {
       toast(`Tìm thấy ${nearby.length} KH trong ${(Math.round(radius/100)/10)} km`, 'ok');
-const html = nearby.map(r=>`
-  <tr data-id="${escAttr(r.ma_kh)}"
-      data-ten_kh="${escAttr(r.ten_kh||'')}"
-      data-dien_thoai="${escAttr(r.dien_thoai||'')}">
+      const html = nearby.map(r=>`
+        <tr data-id="${escAttr(r.ma_kh)}"
+            data-ten_kh="${escAttr(r.ten_kh||'')}"
+            data-dien_thoai="${escAttr(r.dien_thoai||'')}">
 
-    <td class="col-ma">
-      <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
-    </td>
-    <td class="col-ten">
-      ${escAttr(r.ten_kh||'')}
-      <span class="muted"> • ${r.dist}m</span>
-    </td>
-    <td class="col-phone">${r.dien_thoai || ''}</td>
-    <td class="col-actions">
-      <button class="btn btn-warn btn-edit">Sửa</button>
-    </td>
-  </tr>
-`).join('');
+          <td class="col-ma">
+            <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
+          </td>
+          <td class="col-ten">
+            ${escAttr(r.ten_kh||'')}
+            <span class="muted"> • ${r.dist}m</span>
+          </td>
+          <td class="col-phone">${r.dien_thoai || ''}</td>
+          <td class="col-actions">
+            <button class="btn btn-warn btn-edit">Sửa</button>
+          </td>
+        </tr>
+      `).join('');
 
       $('#tbody').innerHTML = html;
       $('#countInfo').textContent = `${nearby.length} dòng (lọc ${Math.round(radius)}m)`;
@@ -456,6 +563,14 @@ const html = nearby.map(r=>`
   $('#btnAdd').addEventListener('click',()=>openModal('add'));
   $('#btnCancel').addEventListener('click',closeModal);
   $('#btnSave').addEventListener('click',saveForm);
+
+  // Nút mở app_checkin.html
+  const btnOpenCheckin = $('#btnOpenCheckin');
+  if (btnOpenCheckin){
+    btnOpenCheckin.addEventListener('click', ()=>{
+      location.assign('app_checkin.html');
+    });
+  }
 
   // Đổi bán kính → lọc lại
   $('#radiusSelect').addEventListener('change',()=>{
