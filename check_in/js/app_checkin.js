@@ -254,7 +254,17 @@ async function getBestStream(){
 async function startCam(){
   try{
     stopCam();
-    stage && stage.classList.remove('ready');
+
+    // ==== FIX stage cho mobile: luôn hiện, không scale 0 ====
+    if (stage){
+      if (isMobile()){
+        stage.style.opacity = '1';
+        stage.style.transform = 'none';
+      } else {
+        stage.classList.remove('ready');
+      }
+    }
+    // ========================================================
 
     stream = await getBestStream();
 
@@ -266,7 +276,16 @@ async function startCam(){
     }
     videoTrack = stream.getVideoTracks()[0] || null;
 
-    stage && stage.classList.add('ready');
+    // ==== FIX stage sau khi cam sẵn sàng ====
+    if (stage){
+      if (isMobile()){
+        stage.style.opacity = '1';
+        stage.style.transform = 'none';
+      } else {
+        stage.classList.add('ready');
+      }
+    }
+    // ========================================
 
     if (btnShot) btnShot.disabled = false;
     await initZoom();
@@ -277,8 +296,18 @@ async function startCam(){
     await afterCameraStartedCheck20m();
   }catch(e){
     console.error(e);
+
+    // Nếu lỗi, trên desktop bỏ class ready, trên mobile vẫn hiện stage bình thường
+    if (stage){
+      if (isMobile()){
+        stage.style.opacity = '1';
+        stage.style.transform = 'none';
+      } else {
+        stage.classList.remove('ready');
+      }
+    }
+
     if (btnShot) btnShot.disabled = true;
-    stage && stage.classList.remove('ready');
     toast('Lỗi camera: '+ (e.message||e),'err',4200);
   }
 }
@@ -398,7 +427,6 @@ function getGPSOnce(){
     if(!('geolocation' in navigator)) return resolve(null);
     navigator.geolocation.getCurrentPosition(
       p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
-
       _=>resolve(null),
       { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
     );
