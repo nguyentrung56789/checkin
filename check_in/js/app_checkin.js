@@ -293,10 +293,15 @@ async function startCam(){
     await setZoom(zoomMin);
     await tryApplyTorch(false);
 
-
     toast('Đã bật camera','ok');
-    await afterCameraStartedCheck20m();
+
+    // ✅ Chạy kiểm tra 20m ở NỀN, không chặn UI / không làm load chậm
+    setTimeout(() => {
+      afterCameraStartedCheck20m().catch(()=>{});
+    }, 200);
+
   }catch(e){
+
     console.error(e);
     if (btnShot) btnShot.disabled = true;
     stage && stage.classList.remove('ready');
