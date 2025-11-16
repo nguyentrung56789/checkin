@@ -40,7 +40,6 @@ function parseCsv(text){
   }
   return out;
 }
-
 async function ensureSheetPoints(){
   if (SHEET_POINTS.length) return SHEET_POINTS;
   const cached = lsGet('SHEET_POINTS_CACHE');
@@ -67,7 +66,6 @@ async function ensureSheetPoints(){
   lsSet('SHEET_POINTS_TS', Date.now());
   return SHEET_POINTS;
 }
-
 function distanceMeters(a,b){
   const toRad=d=>d*Math.PI/180, R=6371000;
   const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
@@ -75,7 +73,6 @@ function distanceMeters(a,b){
   const aa=s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
   return 2*R*Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
 }
-
 function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
   let best=null, bestD=Infinity;
   for(const it of arr){
@@ -84,7 +81,6 @@ function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
   }
   return best;
 }
-
 async function afterCameraStartedCheck20m(){
   try{
     await ensureSheetPoints();
@@ -149,7 +145,6 @@ async function ensureAudioCtx(){
   }
   if(audioCtx.state === 'suspended') await audioCtx.resume();
 }
-
 function noiseBurst(ctx, t0, dur=0.03){
   const len = Math.floor(ctx.sampleRate * dur);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -164,25 +159,20 @@ function noiseBurst(ctx, t0, dur=0.03){
   src.connect(lp); lp.connect(g); g.connect(compressor);
   src.start(t0); src.stop(t0 + dur + 0.01);
 }
-
 let soundEnabled = (localStorage.getItem('soundEnabled')??'1') === '1';
-
 function renderSoundBtn(){
   if (!btnSound) return;
   btnSound.classList.toggle('btn-on', soundEnabled);
   btnSound.textContent = soundEnabled ? '🔊' : '🔇';
   btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
 }
-
 renderSoundBtn();
-
 btnSound && (btnSound.onclick = ()=>{ 
   soundEnabled=!soundEnabled; 
   localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); 
   renderSoundBtn(); 
   toast(soundEnabled?'Đã bật tiếng chụp':'Đã tắt tiếng chụp'); 
 });
-
 async function playShutter(){
   if(!soundEnabled) return;
   await ensureAudioCtx();
@@ -254,17 +244,7 @@ async function getBestStream(){
 async function startCam(){
   try{
     stopCam();
-
-    // ==== FIX stage cho mobile: luôn hiện, không scale 0 ====
-    if (stage){
-      if (isMobile()){
-        stage.style.opacity = '1';
-        stage.style.transform = 'none';
-      } else {
-        stage.classList.remove('ready');
-      }
-    }
-    // ========================================================
+    stage && stage.classList.remove('ready');
 
     stream = await getBestStream();
 
@@ -276,16 +256,7 @@ async function startCam(){
     }
     videoTrack = stream.getVideoTracks()[0] || null;
 
-    // ==== FIX stage sau khi cam sẵn sàng ====
-    if (stage){
-      if (isMobile()){
-        stage.style.opacity = '1';
-        stage.style.transform = 'none';
-      } else {
-        stage.classList.add('ready');
-      }
-    }
-    // ========================================
+    stage && stage.classList.add('ready');
 
     if (btnShot) btnShot.disabled = false;
     await initZoom();
@@ -296,18 +267,8 @@ async function startCam(){
     await afterCameraStartedCheck20m();
   }catch(e){
     console.error(e);
-
-    // Nếu lỗi, trên desktop bỏ class ready, trên mobile vẫn hiện stage bình thường
-    if (stage){
-      if (isMobile()){
-        stage.style.opacity = '1';
-        stage.style.transform = 'none';
-      } else {
-        stage.classList.remove('ready');
-      }
-    }
-
     if (btnShot) btnShot.disabled = true;
+    stage && stage.classList.remove('ready');
     toast('Lỗi camera: '+ (e.message||e),'err',4200);
   }
 }
@@ -317,7 +278,6 @@ function renderCssZoom(){
   video.style.transformOrigin = 'center center';
   video.style.transform = `scale(${zoomVal})`;
 }
-
 async function initZoom(){
   zoomSupported = false;
   cssZoomFallback = false;
@@ -397,7 +357,6 @@ async function tryApplyTorch(turnOn){
     return false;
   }
 }
-
 btnTorch && (btnTorch.onclick = async ()=>{
   const ok = await tryApplyTorch(!torchOn);
   if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
@@ -421,17 +380,14 @@ function drawToCanvas(){
   canvas.width = TARGET_W; canvas.height = TARGET_H;
   canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
 }
-
-function getGPSOnce(){ 
-  return new Promise(resolve=>{
-    if(!('geolocation' in navigator)) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
-      _=>resolve(null),
-      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-    );
-  });
-}
+function getGPSOnce(){ return new Promise(resolve=>{
+  if(!('geolocation' in navigator)) return resolve(null);
+  navigator.geolocation.getCurrentPosition(
+    p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
+    _=>resolve(null),
+    { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+  );
+});}
 
 /* ================== EVENTS ================== */
 btnStart && (btnStart.onclick = startCam);
@@ -481,52 +437,22 @@ btnShot && (btnShot.onclick = async ()=>{
 /* Nút Menu → về main.html */
 btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
 
-/* ================== MOBILE DETECT ================== */
-function isMobile(){
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
-}
-
 /* ================== AUTO BOOT ================== */
 (async()=>{
   try{
-    const mobile = isMobile();
+    const camPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'camera'}) : null;
+    const geoPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'geolocation'}) : null;
 
-    if (!mobile) {
-      // DESKTOP: vẫn auto bật cam như cũ
-      const camPerm = navigator.permissions?.query
-        ? await navigator.permissions.query({ name:'camera' })
-        : null;
-      const geoPerm = navigator.permissions?.query
-        ? await navigator.permissions.query({ name:'geolocation' })
-        : null;
-
-      if (!camPerm || camPerm.state === 'granted') {
-        await startCam();
-      }
-
-      if (!geoPerm || geoPerm.state === 'granted') {
-        navigator.geolocation.getCurrentPosition(()=>{}, ()=>{});
-      }
-    } else {
-      // MOBILE: không auto bật cam, chờ user bấm nút
-      toast('Bấm nút "Bật camera" để mở cam.', 'info', 4000);
-    }
+    // Chỉ tự bật cam nếu quyền đã granted (đỡ lỗi trên mobile)
+    if (!camPerm || camPerm.state==='granted') await startCam();
+    // Gọi GPS sớm nếu được, để lần sau nhanh hơn
+    if (!geoPerm || geoPerm.state==='granted') navigator.geolocation.getCurrentPosition(()=>{},()=>{});
   }catch(e){
     console.warn('Auto boot error', e);
   }
 })();
 
-/* Khi tab ẩn/hiện lại */
-document.addEventListener('visibilitychange', () => { 
-  if (document.hidden) {
-    stopCam();
-  } else {
-    if (!isMobile()) {
-      // Desktop: tự bật lại camera
-      startCam();
-    } else {
-      // Mobile: chỉ nhắc, không tự bật
-      toast('Bấm nút "Bật camera" để mở lại cam.', 'info', 2500);
-    }
-  }
+document.addEventListener('visibilitychange',()=>{ 
+  if(document.hidden) stopCam(); 
+  else startCam(); 
 });
