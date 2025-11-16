@@ -289,8 +289,10 @@ async function startCam(){
 
     if (btnShot) btnShot.disabled = false;
     await initZoom();
-    await setZoom(1);
+    // 👇 luôn dùng mức zoom nhỏ nhất
+    await setZoom(zoomMin);
     await tryApplyTorch(false);
+
 
     toast('Đã bật camera','ok');
     await afterCameraStartedCheck20m();
