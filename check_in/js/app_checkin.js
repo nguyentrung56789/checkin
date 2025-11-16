@@ -40,6 +40,7 @@ function parseCsv(text){
   }
   return out;
 }
+
 async function ensureSheetPoints(){
   if (SHEET_POINTS.length) return SHEET_POINTS;
   const cached = lsGet('SHEET_POINTS_CACHE');
@@ -66,6 +67,7 @@ async function ensureSheetPoints(){
   lsSet('SHEET_POINTS_TS', Date.now());
   return SHEET_POINTS;
 }
+
 function distanceMeters(a,b){
   const toRad=d=>d*Math.PI/180, R=6371000;
   const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
@@ -73,6 +75,7 @@ function distanceMeters(a,b){
   const aa=s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
   return 2*R*Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
 }
+
 function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
   let best=null, bestD=Infinity;
   for(const it of arr){
@@ -81,6 +84,7 @@ function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
   }
   return best;
 }
+
 async function afterCameraStartedCheck20m(){
   try{
     await ensureSheetPoints();
@@ -145,6 +149,7 @@ async function ensureAudioCtx(){
   }
   if(audioCtx.state === 'suspended') await audioCtx.resume();
 }
+
 function noiseBurst(ctx, t0, dur=0.03){
   const len = Math.floor(ctx.sampleRate * dur);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -159,7 +164,9 @@ function noiseBurst(ctx, t0, dur=0.03){
   src.connect(lp); lp.connect(g); g.connect(compressor);
   src.start(t0); src.stop(t0 + dur + 0.01);
 }
+
 let soundEnabled = (localStorage.getItem('soundEnabled')??'1') === '1';
+
 function renderSoundBtn(){
   if (!btnSound) return;
   btnSound.classList.toggle('btn-on', soundEnabled);
@@ -167,12 +174,14 @@ function renderSoundBtn(){
   btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
 }
 renderSoundBtn();
+
 btnSound && (btnSound.onclick = ()=>{ 
   soundEnabled=!soundEnabled; 
   localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); 
   renderSoundBtn(); 
   toast(soundEnabled?'Đã bật tiếng chụp':'Đã tắt tiếng chụp'); 
 });
+
 async function playShutter(){
   if(!soundEnabled) return;
   await ensureAudioCtx();
@@ -220,7 +229,7 @@ function stopCam(){
   if (video) video.srcObject=null;
 }
 
-// 👉 Không dùng getBestStream nữa, dùng logic giống checkin.js FINAL + ZOOM
+// Dùng logic giống checkin.js FINAL + ZOOM
 async function startCam(){
   try{
     // Tắt stream cũ
@@ -243,7 +252,6 @@ async function startCam(){
     try{
       stream = await navigator.mediaDevices.getUserMedia(base);
     }catch(e){
-      // Giải thích lỗi rõ ràng hơn (giống code bạn đang dùng ổn ở app khác)
       if (e.name === 'NotAllowedError') {
         throw new Error('Bạn đã chặn quyền camera. Vào Cài đặt trình duyệt để bật lại.');
       }
@@ -299,6 +307,7 @@ function renderCssZoom(){
   video.style.transformOrigin = 'center center';
   video.style.transform = `scale(${zoomVal})`;
 }
+
 async function initZoom(){
   zoomSupported = false;
   cssZoomFallback = false;
@@ -378,6 +387,7 @@ async function tryApplyTorch(turnOn){
     return false;
   }
 }
+
 btnTorch && (btnTorch.onclick = async ()=>{
   const ok = await tryApplyTorch(!torchOn);
   if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
@@ -401,14 +411,17 @@ function drawToCanvas(){
   canvas.width = TARGET_W; canvas.height = TARGET_H;
   canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
 }
-function getGPSOnce(){ return new Promise(resolve=>{
-  if(!('geolocation' in navigator)) return resolve(null);
-  navigator.geolocation.getCurrentPosition(
-    p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
-    _=>resolve(null),
-    { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-  );
-});}
+
+function getGPSOnce(){ 
+  return new Promise(resolve=>{
+    if(!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
+      _=>resolve(null),
+      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+    );
+  });
+}
 
 /* ================== EVENTS ================== */
 btnStart && (btnStart.onclick = startCam);
@@ -459,21 +472,53 @@ btnShot && (btnShot.onclick = async ()=>{
 btnMenu && (btnMenu.onclick = ()=>{ location.assign('main.html'); });
 
 /* ================== AUTO BOOT ================== */
-(async()=>{
-  try{
-    const camPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'camera'}) : null;
-    const geoPerm = navigator.permissions?.query ? await navigator.permissions.query({name:'geolocation'}) : null;
+// Chỉ auto bật cam khi TRƯỚC ĐÓ đã được cấp quyền (granted).
+// Nếu chưa granted → KHÔNG auto, đợi user bấm nút btnStart.
+(async () => {
+  try {
+    if (navigator.permissions && navigator.permissions.query) {
+      const camPerm = await navigator.permissions.query({ name: 'camera' });
+      let geoPerm = null;
+      try {
+        geoPerm = await navigator.permissions.query({ name: 'geolocation' });
+      } catch (_) {}
 
-    // Chỉ tự bật cam nếu quyền đã granted (đỡ lỗi trên mobile)
-    if (!camPerm || camPerm.state==='granted') await startCam();
-    // Gọi GPS sớm nếu được, để lần sau nhanh hơn
-    if (!geoPerm || geoPerm.state==='granted') navigator.geolocation.getCurrentPosition(()=>{},()=>{});
-  }catch(e){
+      if (camPerm.state === 'granted') {
+        // Đã cho phép từ lần trước → auto bật cho mượt
+        await startCam();
+      } else {
+        // 'prompt' hoặc 'denied' → không auto, chỉ nhắc người dùng
+        toast('Bấm nút "Bật camera" để mở cam.', 'info', 3000);
+      }
+
+      // GPS: chỉ pre-warm nếu đã granted
+      if (geoPerm && geoPerm.state === 'granted') {
+        navigator.geolocation.getCurrentPosition(()=>{},()=>{});
+      }
+
+      // Nếu user đổi quyền trong lúc đang mở
+      camPerm.onchange = () => {
+        if (camPerm.state === 'granted') {
+          toast('Đã cấp quyền camera, bấm "Bật camera" để dùng.', 'ok', 2500);
+        }
+      };
+    } else {
+      // Không hỗ trợ Permissions API → KHÔNG auto start
+      toast('Bấm nút "Bật camera" để mở cam.', 'info', 3000);
+    }
+  } catch (e) {
     console.warn('Auto boot error', e);
   }
 })();
 
-document.addEventListener('visibilitychange',()=>{ 
-  if(document.hidden) stopCam(); 
-  else startCam(); 
+/* Khi tab ẩn/hiện lại */
+document.addEventListener('visibilitychange', () => { 
+  if (document.hidden) {
+    // Ẩn tab → tắt camera cho nhẹ máy
+    stopCam();
+  } else {
+    // Khi quay lại → KHÔNG tự bật lại camera (để tránh bị chặn quyền)
+    toast('Bấm nút "Bật camera" để mở lại cam.', 'info', 2500);
+    // Người dùng muốn dùng tiếp thì bấm lại nút btnStart → startCam()
+  }
 });
