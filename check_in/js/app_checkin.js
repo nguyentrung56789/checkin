@@ -220,40 +220,61 @@ function stopCam(){
   if (video) video.srcObject=null;
 }
 
-async function getBestStream(){
-  const baseVideo = {
-    width:  { ideal:1080 },
-    height: { ideal:1920 }
-  };
-  const trials = [
-    { video: { ...baseVideo, facingMode:{ exact:'environment' } }, audio:false },
-    { video: { ...baseVideo, facingMode:{ ideal:'environment' } }, audio:false },
-    { video: { ...baseVideo, facingMode:{ exact:'user' } }, audio:false },
-    { video: { ...baseVideo, facingMode:{ ideal:'user' } }, audio:false },
-    { video: baseVideo, audio:false }
-  ];
-  let lastErr=null;
-  for(const c of trials){
-    try{
-      return await navigator.mediaDevices.getUserMedia(c);
-    }catch(e){ lastErr=e; }
-  }
-  throw lastErr || new Error('Không lấy được camera');
-}
-
+// 👉 Không dùng getBestStream nữa, dùng logic giống checkin.js FINAL + ZOOM
 async function startCam(){
   try{
+    // Tắt stream cũ
     stopCam();
     stage && stage.classList.remove('ready');
 
-    stream = await getBestStream();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Trình duyệt không hỗ trợ camera');
+    }
+
+    const base = {
+      video: {
+        width:  { ideal: 1080 },
+        height: { ideal: 1920 },
+        facingMode: { ideal: 'environment' }
+      },
+      audio: false
+    };
+
+    try{
+      stream = await navigator.mediaDevices.getUserMedia(base);
+    }catch(e){
+      // Giải thích lỗi rõ ràng hơn (giống code bạn đang dùng ổn ở app khác)
+      if (e.name === 'NotAllowedError') {
+        throw new Error('Bạn đã chặn quyền camera. Vào Cài đặt trình duyệt để bật lại.');
+      }
+      if (e.name === 'NotFoundError') {
+        throw new Error('Không tìm thấy thiết bị camera.');
+      }
+      if (String(e.message || '').includes('Device in use')) {
+        toast('Camera đang bận — thử lại...', 'info', 2000);
+        await new Promise(r => setTimeout(r, 1000));
+        stream = await navigator.mediaDevices.getUserMedia(base);
+      } else {
+        throw e;
+      }
+    }
 
     if (video) {
       video.srcObject = stream;
       video.setAttribute('playsinline','');
       video.muted = true;
-      await video.play();
+
+      // Đợi metadata
+      await new Promise(r => { video.onloadedmetadata = r; });
+
+      // BẮT BUỘC phải play() cho mobile
+      try {
+        await video.play();
+      } catch (err) {
+        console.warn('Không play được video:', err);
+      }
     }
+
     videoTrack = stream.getVideoTracks()[0] || null;
 
     stage && stage.classList.add('ready');
@@ -269,7 +290,7 @@ async function startCam(){
     console.error(e);
     if (btnShot) btnShot.disabled = true;
     stage && stage.classList.remove('ready');
-    toast('Lỗi camera: '+ (e.message||e),'err',4200);
+    toast('Lỗi camera: ' + (e.message || e), 'err', 4200);
   }
 }
 
