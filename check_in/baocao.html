@@ -94,25 +94,25 @@
     .filter-item{
       display:flex;
       flex-direction:column;
-      gap:4px;
-      min-width:180px;
-      flex:1 1 200px;
+      gap:6px;
+      min-width:200px;
+      flex:1 1 220px;
     }
     .filter-item label{
       font-size:13px;
       color:var(--muted);
     }
-    .filter-item input,
-    .filter-item select{
-      padding:10px 12px;
+    .filter-item select,
+    .filter-item input[type="date"]{
+      padding:8px 10px;
       border-radius:10px;
       border:1px solid var(--border);
       background:#f9fafb;
       color:var(--text);
       font-size:14px;
     }
-    .filter-item input:focus,
-    .filter-item select:focus{
+    .filter-item select:focus,
+    .filter-item input[type="date"]:focus{
       outline:none;
       border-color:var(--accent);
       box-shadow:0 0 0 1px var(--accent-soft);
@@ -123,22 +123,39 @@
       align-items:flex-end;
     }
 
-    .date-shell{
-      position:relative;
+    /* Dải nút chọn nhanh thời gian (giống KiotViet đơn giản) */
+    .range-presets{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+    }
+    .range-pill{
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid var(--border);
+      background:#f9fafb;
+      font-size:12px;
+      cursor:pointer;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .range-pill.active{
+      background:var(--accent-soft);
+      border-color:var(--accent);
+      color:var(--accent);
+      font-weight:500;
+    }
+
+    .range-custom{
       display:flex;
       align-items:center;
+      gap:6px;
+      margin-top:6px;
+      font-size:13px;
+      color:var(--muted);
     }
-    .date-shell input[type="text"]{
-      width:100%;
-      padding-right:34px;
-    }
-    .date-shell .date-icon{
-      position:absolute;
-      right:10px;
-      width:18px;
-      height:18px;
-      pointer-events:none;
-      opacity:.6;
+    .range-custom span{
+      padding:0 4px;
     }
 
     .status{
@@ -169,10 +186,13 @@
       background:var(--panel);
       box-shadow:0 18px 30px rgba(15,23,42,0.04);
     }
+
+    /* Bảng: ngày & tên_kh bằng nhau, địa chỉ tự giãn */
     table{
       width:100%;
       border-collapse:collapse;
       font-size:14px;
+      table-layout:fixed;
     }
     thead{
       background:#f9fafb;
@@ -189,10 +209,29 @@
     }
     tbody tr:nth-child(even){background:var(--panel-soft);}
     tbody tr:hover{background:#eff6ff;}
-    td:first-child{
-      text-align:center;
+
+    /* STT */
+    th:nth-child(1),
+    td:nth-child(1){
       width:60px;
+      text-align:center;
       color:var(--muted);
+    }
+
+    /* Ngày & Tên KH: cùng width, ellipsis nếu dài */
+    th:nth-child(2), td:nth-child(2),
+    th:nth-child(3), td:nth-child(3){
+      width:200px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    /* Địa chỉ: auto giãn + cho phép xuống dòng */
+    th:nth-child(4), td:nth-child(4){
+      width:auto;
+      white-space:normal;
+      word-break:break-word;
     }
 
     @media (max-width:640px){
@@ -206,7 +245,7 @@
     <header class="top-bar">
       <div class="top-left">
         <h1>Báo cáo check-in khách hàng</h1>
-        <p>Hiển thị dữ liệu từ Supabase (nv_checkin) – lọc theo ngày &amp; mã nhân viên</p>
+        <p>Hiển thị dữ liệu từ Supabase (nv_checkin) – lọc theo khoảng ngày &amp; mã nhân viên</p>
       </div>
       <div class="top-right">
         <button id="btnMap" class="btn btn-map">
@@ -216,22 +255,7 @@
     </header>
 
     <section class="filter-bar">
-      <div class="filter-item">
-        <label for="ngayDisplay">Ngày check-in</label>
-        <div class="date-shell">
-          <!-- ô hiển thị dd/mm/yyyy -->
-          <input type="text" id="ngayDisplay" placeholder="dd/mm/yyyy" readonly />
-          <!-- ô hidden thật sự là input date (yyyy-mm-dd) -->
-          <input type="date" id="ngayRaw" style="position:absolute;opacity:0;pointer-events:none;width:0;height:0;" />
-          <svg class="date-icon" viewBox="0 0 24 24">
-            <rect x="3" y="4" width="18" height="18" rx="3" ry="3" fill="none" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="9" y1="3" x2="9" y2="7" stroke="currentColor" stroke-width="1.4"/>
-            <line x1="15" y1="3" x2="15" y2="7" stroke="currentColor" stroke-width="1.4"/>
-          </svg>
-        </div>
-      </div>
-
+      <!-- Lọc nhân viên -->
       <div class="filter-item">
         <label for="maNvSelect">Nhân viên (ma_nv)</label>
         <select id="maNvSelect">
@@ -239,6 +263,25 @@
         </select>
       </div>
 
+      <!-- Lọc thời gian kiểu KiotViet đơn giản -->
+      <div class="filter-item">
+        <label>Thời gian</label>
+        <div class="range-presets">
+          <button class="range-pill" data-range="today">Hôm nay</button>
+          <button class="range-pill" data-range="yesterday">Hôm qua</button>
+          <button class="range-pill" data-range="7d">7 ngày qua</button>
+          <button class="range-pill" data-range="30d">30 ngày qua</button>
+          <button class="range-pill" data-range="custom">Tùy chọn</button>
+        </div>
+        <div class="range-custom">
+          <span>Từ:</span>
+          <input type="date" id="fromDate" />
+          <span>Đến:</span>
+          <input type="date" id="toDate" />
+        </div>
+      </div>
+
+      <!-- Nút lọc -->
       <div class="filter-item filter-actions">
         <button id="btnFilter" class="btn">Lọc dữ liệu</button>
       </div>
@@ -254,6 +297,7 @@
         <thead>
           <tr>
             <th>#</th>
+            <th>Ngày check-in</th>
             <th>Tên khách hàng</th>
             <th>Địa chỉ</th>
           </tr>
@@ -276,10 +320,10 @@
       box.classList.remove('ok','warn','err');
       if(mode) box.classList.add(mode);
 
-      if(mode === 'ok')      dot.style.background = '#22c55e';
-      else if(mode === 'warn') dot.style.background = '#f59e0b';
-      else if(mode === 'err')  dot.style.background = '#ef4444';
-      else                    dot.style.background = '#9ca3af';
+      if(mode === 'ok')         dot.style.background = '#22c55e';
+      else if(mode === 'warn')  dot.style.background = '#f59e0b';
+      else if(mode === 'err')   dot.style.background = '#ef4444';
+      else                      dot.style.background = '#9ca3af';
     }
 
     async function getSbConfig(){
@@ -331,37 +375,71 @@
 
     // ========= DOM =========
     const $  = s => document.querySelector(s);
-    const ngayDisplay = $('#ngayDisplay');  // dd/mm/yyyy
-    const ngayRaw     = $('#ngayRaw');      // input date thật (yyyy-mm-dd)
     const maNvSelect  = $('#maNvSelect');
     const btnFilter   = $('#btnFilter');
     const btnMap      = $('#btnMap');
     const tbody       = $('#tbodyKh');
+    const fromDateEl  = $('#fromDate');
+    const toDateEl    = $('#toDate');
+    const presetBtns  = document.querySelectorAll('.range-pill');
 
-    // yyyy-mm-dd -> dd/MM/yyyy  (phù hợp cột 'ngay' trong nv_checkin & hiển thị)
+    // yyyy-mm-dd -> dd/MM/yyyy (để khớp cột 'ngay' dạng chuỗi dd/MM/yyyy hoặc dd/MM/yyyy hh:mm)
     function ymdToDmy(ymd){
       if(!ymd || !ymd.includes('-')) return '';
       const [y,m,d] = ymd.split('-');
       return `${d}/${m}/${y}`;
     }
 
-    // yyyy-mm-dd -> dd/MM/yyyy cho câu LIKE
-    function formatDateForDb(ymd){
-      return ymdToDmy(ymd);
+    // tạo danh sách yyyy-mm-dd từ from..to
+    function listDates(fromYmd, toYmd){
+      const res = [];
+      if(!fromYmd || !toYmd) return res;
+      let d = new Date(fromYmd);
+      const end = new Date(toYmd);
+      if(isNaN(d) || isNaN(end)) return res;
+      while(d <= end){
+        const yyyy = d.getFullYear();
+        const mm   = String(d.getMonth()+1).padStart(2,'0');
+        const dd   = String(d.getDate()).padStart(2,'0');
+        res.push(`${yyyy}-${mm}-${dd}`);
+        d.setDate(d.getDate()+1);
+      }
+      return res;
     }
 
-    function syncDisplayFromRaw(){
-      const val = ngayRaw.value;
-      ngayDisplay.value = val ? ymdToDmy(val) : '';
+    // set from/to theo preset kiểu KiotViet đơn giản
+    function applyPreset(key){
+      const today = new Date();
+      let start = new Date(today);
+      let end   = new Date(today);
+
+      if(key === 'today'){
+        // start = end = hôm nay
+      }else if(key === 'yesterday'){
+        start.setDate(start.getDate()-1);
+        end.setDate(end.getDate()-1);
+      }else if(key === '7d'){
+        start.setDate(start.getDate()-6); // 7 ngày: hôm nay + 6 ngày trước
+      }else if(key === '30d'){
+        start.setDate(start.getDate()-29);
+      }else if(key === 'custom'){
+        // để user tự nhập from/to
+        return;
+      }
+
+      const fmt = d => {
+        const yyyy = d.getFullYear();
+        const mm   = String(d.getMonth()+1).padStart(2,'0');
+        const dd   = String(d.getDate()).padStart(2,'0');
+        return `${yyyy}-${mm}-${dd}`;
+      };
+      fromDateEl.value = fmt(start);
+      toDateEl.value   = fmt(end);
     }
 
-    function setToday(){
-      const t = new Date();
-      const yyyy = t.getFullYear();
-      const mm   = String(t.getMonth()+1).padStart(2,'0');
-      const dd   = String(t.getDate()).padStart(2,'0');
-      ngayRaw.value = `${yyyy}-${mm}-${dd}`;
-      syncDisplayFromRaw();
+    function setActivePreset(btn){
+      presetBtns.forEach(b => b.classList.remove('active'));
+      if(btn) btn.classList.add('active');
     }
 
     // ========= INIT =========
@@ -375,32 +453,42 @@
         return;
       }
 
-      setToday();
       await loadMaNvOptions();
+
+      // chọn mặc định "Hôm nay"
+      const todayBtn = document.querySelector('.range-pill[data-range="today"]');
+      applyPreset('today');
+      setActivePreset(todayBtn);
+
+      presetBtns.forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const key = btn.dataset.range;
+          setActivePreset(btn);
+          applyPreset(key);
+          if(key !== 'custom'){
+            fetchData();
+          }
+        });
+      });
 
       btnFilter.addEventListener('click', fetchData);
       maNvSelect.addEventListener('change', fetchData);
 
-      // click vào ô hiển thị thì mở date picker
-      ngayDisplay.addEventListener('click', () => {
-        if(ngayRaw.showPicker){
-          ngayRaw.showPicker();
-        }else{
-          ngayRaw.focus();
-          ngayRaw.click();
-        }
+      fromDateEl.addEventListener('change', ()=> {
+        setActivePreset(document.querySelector('.range-pill[data-range="custom"]'));
       });
-      ngayRaw.addEventListener('change', () => {
-        syncDisplayFromRaw();
-        fetchData();
+      toDateEl.addEventListener('change', ()=> {
+        setActivePreset(document.querySelector('.range-pill[data-range="custom"]'));
       });
 
       btnMap.addEventListener('click', () => {
-        const rawVal = ngayRaw.value;
-        const nv = maNvSelect.value;
+        const from = fromDateEl.value;
+        const to   = toDateEl.value;
+        const nv   = maNvSelect.value;
         const qs = new URLSearchParams();
-        if(rawVal) qs.set('ngay', rawVal); // gửi dạng yyyy-mm-dd
-        if(nv)     qs.set('ma_nv', nv);
+        if(from) qs.set('from', from);
+        if(to)   qs.set('to', to);
+        if(nv)   qs.set('ma_nv', nv);
         const url = 'map_tuyen.html' + (qs.toString() ? ('?' + qs.toString()) : '');
         location.href = url;
       });
@@ -438,27 +526,35 @@
         maNvSelect.appendChild(opt);
       }
 
-      setStatus('Supabase sẵn sàng. Mời chọn ngày / nhân viên.', 'ok');
+      setStatus('Supabase sẵn sàng. Mời chọn thời gian / nhân viên.', 'ok');
     }
 
-    // ========= LẤY DỮ LIỆU – LỌC THEO NGÀY + ma_nv =========
+    // ========= LẤY DỮ LIỆU – LỌC THEO KHOẢNG NGÀY + ma_nv =========
     async function fetchData(){
-      const sb = await ensureSupa();
+      const sb  = await ensureSupa();
       const nv  = maNvSelect.value;
-      const raw = ngayRaw.value; // yyyy-mm-dd
+      const fYmd = fromDateEl.value; // yyyy-mm-dd
+      const tYmd = toDateEl.value;   // yyyy-mm-dd
 
       setStatus('Đang tải dữ liệu từ nv_checkin...', 'warn');
       btnFilter.disabled = true;
 
       try{
-        let q = sb
-          .from('nv_checkin')
-          .select('*')
-          .order('ngay', { ascending:false });
+        let q = sb.from('nv_checkin').select('*').order('ngay',{ascending:false});
 
-        if(raw){
-          const dbDate = formatDateForDb(raw); // dd/MM/yyyy
-          q = q.like('ngay', dbDate + '%');
+        // nếu có khoảng ngày -> tạo list ngày và build or()
+        const days = listDates(fYmd, tYmd);
+
+        if(days.length === 1){
+          const d = ymdToDmy(days[0]); // dd/MM/yyyy
+          q = q.like('ngay', d + '%');
+        }else if(days.length > 1){
+          // tạo chuỗi OR: ngay.like.dd/MM/yyyy%,ngay.like.dd/MM/yyyy2%,...
+          const orStr = days.map(d => {
+            const ddmmyyyy = ymdToDmy(d);
+            return `ngay.like.${ddmmyyyy}%`;
+          }).join(',');
+          q = q.or(orStr);
         }
 
         if(nv){
@@ -475,7 +571,7 @@
         }
 
         renderRows(data || []);
-        setStatus(`Đang hiển thị ${ (data || []).length } dòng check-in.`, 'ok');
+        setStatus(`Đang hiển thị ${(data || []).length} dòng check-in.`, 'ok');
       }finally{
         btnFilter.disabled = false;
       }
@@ -488,7 +584,7 @@
       if(!rows.length){
         const tr = document.createElement('tr');
         const td = document.createElement('td');
-        td.colSpan = 3;
+        td.colSpan = 4;
         td.textContent = 'Không có dữ liệu.';
         td.style.textAlign = 'center';
         td.style.color = '#9ca3af';
@@ -502,14 +598,23 @@
         const td1 = document.createElement('td');
         const td2 = document.createElement('td');
         const td3 = document.createElement('td');
+        const td4 = document.createElement('td');
 
         td1.textContent = idx + 1;
 
-        const tenKh = r.ten_kh || r.ma_kh || '';
-        td2.textContent = tenKh;
+        // Ngày check-in: nếu bạn chỉ muốn lấy phần ngày, bỏ giờ:
+        // td2.textContent = (r.ngay || '').split(' ')[0];
+        td2.textContent = r.ngay || '';
 
-        td3.textContent = r.dia_chi || '';
-        tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+        const tenKh = r.ten_kh || r.ma_kh || '';
+        td3.textContent = tenKh;
+
+        td4.textContent = r.dia_chi || '';
+
+        tr.appendChild(td1);
+        tr.appendChild(td2);
+        tr.appendChild(td3);
+        tr.appendChild(td4);
         tbody.appendChild(tr);
       });
     }
