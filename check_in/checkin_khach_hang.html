@@ -102,6 +102,19 @@
       transform:translateY(1px) scale(.97);
       box-shadow:0 2px 6px rgba(0,0,0,.55);
     }
+    /* Nút mã KH đã checkin hôm nay */
+    .ma-kh-btn.ma-kh-disabled{
+      background:#4b5563;
+      color:#cbd5f5;
+      cursor:default;
+      box-shadow:none;
+      opacity:.7;
+    }
+    .ma-kh-btn.ma-kh-disabled:hover,
+    .ma-kh-btn.ma-kh-disabled:active{
+      transform:none;
+      filter:none;
+    }
 
     .modal-wrap{
       position:fixed;
@@ -195,7 +208,9 @@
   <div class="modal">
     <h3 id="modalTitle">Thêm khách hàng</h3>
     <div class="grid">
-      <label class="span2">Mã KH (khóa): <input id="f_ma_kh" class="input" placeholder="Bắt buộc"></label>
+      <label class="span2">Mã KH (khóa):
+        <input id="f_ma_kh" class="input" placeholder="Để trống sẽ tự sinh yymmddhhmm">
+      </label>
       <label class="span2">Tên KH: <input id="f_ten_kh" class="input" placeholder="VD: Nguyễn Văn A"></label>
       <label class="span2">Địa chỉ: <input id="f_dia_chi" class="input" placeholder="Số nhà, đường..."></label>
       <label class="span2">Điện thoại: <input id="f_dien_thoai" class="input" placeholder="VD: 09xxxxxxxx"></label>
@@ -213,21 +228,25 @@
 <script>
 /* ==== Tải supabase-js nếu chưa có ==== */
 async function getSupabaseLib(){
-  if(window.supabase?.createClient) return window.supabase;
+  if (window.supabase?.createClient) return window.supabase;
   const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
   return mod;
 }
 
-(async()=>{
-  const $  = s=>document.querySelector(s);
-  const $$ = s=>Array.from(document.querySelectorAll(s));
-  const toast=(msg,t='')=>{
-    const el=$('#toast');
-    el.textContent=msg;
-    el.style.display='block';
-    el.style.borderColor=t==='err'?'#ef4444':t==='ok'?'#22c55e':'#243153';
+(async () => {
+  const $  = s => document.querySelector(s);
+  const $$ = s => Array.from(document.querySelectorAll(s));
+
+  const toast = (msg,t='')=>{
+    const el = $('#toast');
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.borderColor =
+      t==='err' ? '#ef4444' :
+      t==='ok'  ? '#22c55e' :
+                  '#243153';
     clearTimeout(toast._t);
-    toast._t=setTimeout(()=>el.style.display='none',2200);
+    toast._t = setTimeout(()=>el.style.display='none',2200);
   };
 
   // helper escape attribute (cho data-*)
@@ -238,11 +257,18 @@ async function getSupabaseLib(){
       .replace(/</g,'&lt;');
   }
 
-  const TABLE='nv_checkin_khach_hang';
-  const SESSION_IMG_KEY='CHECKIN_IMAGE_PAYLOAD'; // Ảnh (nếu có) lưu từ trang camera
-  let SB=null; let CURRENT=null;
+  const TABLE           = 'nv_checkin_khach_hang';
+  const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD'; // Ảnh lưu từ trang camera
 
-  // ===== Helpers =====
+  // Bảng log checkin
+  const CHECKIN_TABLE    = 'nv_checkin';
+  const CHECKIN_DATE_COL = 'ngay'; // text dạng dd/MM/yyyy hh:mm
+
+  let SB            = null;
+  let CURRENT       = null;
+  let CHECKED_TODAY = false; // true = NV này đã checkin hôm nay (khóa toàn bộ nút mã KH)
+
+  // ===== Helpers chung =====
   function getLatLngFromURL(){
     const qp = new URLSearchParams(location.search);
     const latRaw = qp.get('lat') ?? qp.get('latitude');
@@ -251,6 +277,7 @@ async function getSupabaseLib(){
     if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
     return null;
   }
+
   function initRadiusFromURLOrDefault(){
     const sel = $('#radiusSelect');
     const qp = new URLSearchParams(location.search);
@@ -264,29 +291,44 @@ async function getSupabaseLib(){
       sel.value = '50';
     }
   }
+
   function getRadiusFromUI(){
     const v = Number($('#radiusSelect').value);
     return Number.isFinite(v) && v>0 ? v : 50;
   }
+
   function getCurrentNVID(){
     try{
       const s = sessionStorage.getItem('nv_ctx');
-      if (s){ const o = JSON.parse(s); if (o?.ma_nv) return String(o.ma_nv); }
+      if (s){
+        const o = JSON.parse(s);
+        if (o?.ma_nv) return String(o.ma_nv);
+      }
     }catch{}
     try{
       const s2 = localStorage.getItem('nv');
-      if (s2){ const o2 = JSON.parse(s2); if (o2?.ma_nv) return String(o2.ma_nv); }
+      if (s2){
+        const o2 = JSON.parse(s2);
+        if (o2?.ma_nv) return String(o2.ma_nv);
+      }
     }catch{}
     return null;
   }
+
   function getCurrentNVName(){
     try{
       const s = sessionStorage.getItem('nv_ctx');
-      if (s){ const o = JSON.parse(s); if (o?.ten_nv) return String(o.ten_nv); }
+      if (s){
+        const o = JSON.parse(s);
+        if (o?.ten_nv) return String(o.ten_nv);
+      }
     }catch{}
     try{
       const s2 = localStorage.getItem('nv');
-      if (s2){ const o2 = JSON.parse(s2); if (o2?.ten_nv) return String(o2.ten_nv); }
+      if (s2){
+        const o2 = JSON.parse(s2);
+        if (o2?.ten_nv) return String(o2.ten_nv);
+      }
     }catch{}
     return null;
   }
@@ -294,13 +336,55 @@ async function getSupabaseLib(){
   function getImagePayloadFromSession(){
     try{
       const raw = sessionStorage.getItem(SESSION_IMG_KEY);
-      if(!raw) return null;
+      if (!raw) return null;
       const p = JSON.parse(raw);
       if (p && typeof p.image_b64 === 'string' && p.image_b64.length > 0){
         return p; // { image_mime, image_b64, ma_kh?, ma_hd? }
       }
-    }catch(e){}
+    }catch{}
     return null;
+  }
+
+  // fallback cho CSS.escape
+  function cssEscapeSafe(v){
+    try{
+      return CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g,'\\"');
+    }catch{
+      return String(v).replace(/"/g,'\\"');
+    }
+  }
+
+  // ==== Hỗ trợ ngày hôm nay (dd/MM/yyyy) ====
+  function getTodayPrefix_ddMMyyyy(){
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2,'0');
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const yyyy = d.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  // ==== Kiểm tra xem NV hiện tại đã checkin hôm nay chưa ====
+  async function loadCheckedToday(){
+    CHECKED_TODAY = false;
+
+    const ma_nv = getCurrentNVID();
+    if (!ma_nv) return;
+
+    const todayPrefix = getTodayPrefix_ddMMyyyy(); // dd/MM/yyyy
+
+    const { data, error } = await SB
+      .from(CHECKIN_TABLE)
+      .select(`ma_nv, ${CHECKIN_DATE_COL}`)
+      .eq('ma_nv', ma_nv)
+      .like(CHECKIN_DATE_COL, todayPrefix + '%');
+
+    if (!error && Array.isArray(data) && data.length > 0){
+      CHECKED_TODAY = true;
+    }else{
+      CHECKED_TODAY = false;
+    }
+
+    console.log('CHECKED_TODAY?', CHECKED_TODAY);
   }
 
   // ===== Webhook URL (gắn cứng) =====
@@ -338,85 +422,100 @@ async function getSupabaseLib(){
 
   // ===== Modal =====
   function openModal(mode,row=null){
-    CURRENT={mode};
-    $('#modalTitle').textContent=mode==='add'?'Thêm khách hàng':'Sửa khách hàng';
-    $('#f_ma_kh').disabled=(mode==='edit');
-    if(mode==='edit'&&row){
-      $('#f_ma_kh').value=row.ma_kh||'';
-      $('#f_ten_kh').value=row.ten_kh||'';
-      $('#f_dia_chi').value=row.dia_chi||'';
-      $('#f_dien_thoai').value=row.dien_thoai||'';
-      CURRENT.ma_kh=row.ma_kh;
+    CURRENT = { mode };
+    $('#modalTitle').textContent = mode==='add' ? 'Thêm khách hàng' : 'Sửa khách hàng';
+    $('#f_ma_kh').disabled = (mode==='edit');
+    if (mode==='edit' && row){
+      $('#f_ma_kh').value      = row.ma_kh || '';
+      $('#f_ten_kh').value     = row.ten_kh || '';
+      $('#f_dia_chi').value    = row.dia_chi || '';
+      $('#f_dien_thoai').value = row.dien_thoai || '';
+      CURRENT.ma_kh = row.ma_kh;
     }else{
-      $('#f_ma_kh').value='';
-      $('#f_ten_kh').value='';
-      $('#f_dia_chi').value='';
-      $('#f_dien_thoai').value='';
+      $('#f_ma_kh').value      = '';
+      $('#f_ten_kh').value     = '';
+      $('#f_dia_chi').value    = '';
+      $('#f_dien_thoai').value = '';
     }
-    $('#modalWrap').style.display='flex';
+    $('#modalWrap').style.display = 'flex';
   }
-  const closeModal=()=>$('#modalWrap').style.display='none';
+  const closeModal = () => $('#modalWrap').style.display='none';
 
   // ===== Supabase client =====
   async function makeClient(){
-    const url=getConfig('url'), anon=getConfig('anon');
-    const lib=await getSupabaseLib();
+    const url  = getConfig('url');
+    const anon = getConfig('anon');
+    const lib  = await getSupabaseLib();
     return lib.createClient(url,anon,{auth:{persistSession:false}});
   }
 
-  // ===== List & render =====
+  // ===== List & render (không theo bán kính) =====
   async function loadData(){
-    $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
-    const {data,error,count}=await SB
+    $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
+    const { data, error, count } = await SB
       .from(TABLE)
       .select('ma_kh,ten_kh,dia_chi,dien_thoai',{count:'exact'})
       .order('ten_kh',{ascending:true})
       .limit(500);
-    if(error){
+
+    if (error){
       console.error(error);
-      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Lỗi Supabase: ${error.message}</td></tr>`;
+      $('#tbody').innerHTML =
+        `<tr><td colspan="4" class="muted">Lỗi Supabase: ${error.message}</td></tr>`;
       return;
     }
-    $('#countInfo').textContent=`${count??(data?.length||0)} dòng`;
-    renderRows(data||[]);
+    $('#countInfo').textContent = `${count ?? (data?.length || 0)} dòng`;
+    renderRows(data || []);
   }
 
   function renderRows(rows){
-    if(!rows.length){
-      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-      return;
-    }
-    const html = rows.map(r=>`
+    if (!rows.length){
+      $('#tbody').innerHTML =
+        `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+    } else {
+      const html = rows.map(r => {
+        const disabled = CHECKED_TODAY === true;
+        const btnHtml = disabled
+          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="Nhân viên đã checkin hôm nay">${r.ma_kh}</button>`
+          : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>`;
+        return `
       <tr data-id="${escAttr(r.ma_kh)}"
           data-ten_kh="${escAttr(r.ten_kh||'')}"
           data-dien_thoai="${escAttr(r.dien_thoai||'')}">
 
         <td class="col-ma">
-          <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
+          ${btnHtml}
         </td>
         <td class="col-ten">${r.ten_kh || ''}</td>
         <td class="col-phone">${r.dien_thoai || ''}</td>
         <td class="col-actions">
           <button class="btn btn-warn btn-edit">Sửa</button>
         </td>
-      </tr>`).join('');
+      </tr>`;
+      }).join('');
 
-    $('#tbody').innerHTML = html;
+      $('#tbody').innerHTML = html;
+    }
 
-    $$('#tbody .btn-edit').forEach(b=>b.addEventListener('click',onEditClick));
-    $$('#tbody .ma-kh-btn').forEach(b=>b.addEventListener('click',()=>onMaKHClick(b.dataset.id)));
+    $$('#tbody .btn-edit').forEach(b =>
+      b.addEventListener('click', onEditClick)
+    );
+    // chỉ gắn click cho nút chưa bị khóa
+    $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
+      b.addEventListener('click', () => onMaKHClick(b.dataset.id))
+    );
   }
 
   function onEditClick(e){
-    const tr=e.target.closest('tr');
-    if(!tr)return;
-    const row={
-      ma_kh: tr.getAttribute('data-id'),
-      ten_kh: tr.dataset.ten_kh || tr.children[1].textContent,
-      dia_chi: tr.dataset.dia_chi || '',
+    const tr = e.target.closest('tr');
+    if (!tr) return;
+    const row = {
+      ma_kh:      tr.getAttribute('data-id'),
+      ten_kh:     tr.dataset.ten_kh || tr.children[1].textContent,
+      dia_chi:    tr.dataset.dia_chi || '',
       dien_thoai: tr.dataset.dien_thoai || tr.children[2].textContent
     };
-    openModal('edit',row);
+    openModal('edit', row);
   }
 
   // ===== Click Mã KH → gửi webhook (kèm ảnh base64 nếu có) =====
@@ -433,7 +532,7 @@ async function getSupabaseLib(){
     const payload = {
       action: 'checkin',
       ma_kh,
-      ma_nv: ma_nv || null,
+      ma_nv:  ma_nv  || null,
       ten_nv: ten_nv || null,
       lat: Number(coords.lat),
       lng: Number(coords.lng),
@@ -444,7 +543,15 @@ async function getSupabaseLib(){
     try{
       const res = await postWebhook(payload);
       if (res.ok){
-        // Thông báo to, ở giữa (theo CSS .toast)
+        // Sau khi checkin thành công: khóa toàn bộ nút mã KH
+        CHECKED_TODAY = true;
+        $$('.ma-kh-btn').forEach(btn=>{
+          btn.classList.add('ma-kh-disabled');
+          btn.disabled = true;
+          btn.removeAttribute('data-id');
+          btn.title = 'Nhân viên đã checkin hôm nay';
+        });
+
         toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
       } else {
         toast(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`,'err');
@@ -455,25 +562,84 @@ async function getSupabaseLib(){
     }
   }
 
+  // ===== TỰ SINH MÃ KH: yymmddhhmm =====
+  function generateMaKH(){
+    const d = new Date();
+    const yy = String(d.getFullYear()).slice(-2);
+    const MM = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return yy + MM + dd + hh + mm;
+  }
+
+  // ===== KIỂM TRA MÃ KH TRÙNG =====
+  async function checkMaKHExists(ma_kh){
+    const { data, error } = await SB
+      .from(TABLE)
+      .select('ma_kh')
+      .eq('ma_kh', ma_kh)
+      .limit(1);
+    if (error){
+      console.error('Lỗi check mã KH:', error);
+      return false;
+    }
+    return Array.isArray(data) && data.length > 0;
+  }
+
   // ===== Lưu: tự lấy lat/lng từ URL và lọc lại theo bán kính =====
   async function saveForm(){
-    const ma_kh=$('#f_ma_kh').value.trim();
-    const ten_kh=$('#f_ten_kh').value.trim();
-    const dia_chi=$('#f_dia_chi').value.trim();
-    const dien_thoai=$('#f_dien_thoai').value.trim();
-    if(!ma_kh){toast('Mã KH bắt buộc','err');return;}
+    let ma_kh      = $('#f_ma_kh').value.trim();
+    const ten_kh     = $('#f_ten_kh').value.trim();
+    const dia_chi    = $('#f_dia_chi').value.trim();
+    const dien_thoai = $('#f_dien_thoai').value.trim();
+
+    // ADD: nếu đang thêm mới
+    if (CURRENT?.mode === 'add'){
+      // nếu trống -> tự sinh
+      if (!ma_kh){
+        ma_kh = generateMaKH();
+        $('#f_ma_kh').value = ma_kh;
+        toast(`Tự sinh mã KH: ${ma_kh}`,'ok');
+      }
+      // kiểm tra trùng
+      const exists = await checkMaKHExists(ma_kh);
+      if (exists){
+        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,`err`);
+        return;
+      }
+    } else {
+      // EDIT: mã KH đang disabled nên không đổi, nhưng nếu vì lý do gì đó trống thì chặn
+      if (!ma_kh){
+        toast('Mã KH không được trống','err');
+        return;
+      }
+    }
 
     const coords = getLatLngFromURL();
     const lat = coords?.lat ?? null;
     const lng = coords?.lng ?? null;
 
-    if(CURRENT?.mode==='add'){
-      const {error}=await SB.from(TABLE).insert([{ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng}]);
-      if(error){toast('Thêm thất bại','err');return;}
+    if (CURRENT?.mode === 'add'){
+      const { error } = await SB
+        .from(TABLE)
+        .insert([{ ma_kh, ten_kh, dia_chi, dien_thoai, lat, lng }]);
+      if (error){
+        console.error(error);
+        toast('Thêm thất bại','err');
+        return;
+      }
       toast('Đã thêm','ok');
-    }else{
-      const {error}=await SB.from(TABLE).update({ten_kh,dia_chi,dien_thoai,lat,lng}).eq('ma_kh',CURRENT.ma_kh);
-      if(error){toast('Sửa thất bại','err');return;}
+    } else {
+      const { error } = await SB
+        .from(TABLE)
+        .update({ ten_kh, dia_chi, dien_thoai, lat, lng })
+        .eq('ma_kh', CURRENT.ma_kh);
+      if (error){
+        console.error(error);
+        toast('Sửa thất bại','err');
+        return;
+      }
       toast('Đã lưu','ok');
     }
 
@@ -488,7 +654,8 @@ async function getSupabaseLib(){
   // ===== Nearby runner (lọc theo lat/lng + radius) =====
   async function runNearby(lat, lng, radius){
     const $tbody = $('#tbody');
-    $tbody.innerHTML=`<tr><td colspan="4" class="muted">Đang lọc theo bán kính...</td></tr>`;
+    $tbody.innerHTML =
+      `<tr><td colspan="4" class="muted">Đang lọc theo bán kính...</td></tr>`;
 
     const R = 6371000, d2r = Math.PI/180, latR = lat*d2r;
     const delta = (radius / R) * (180/Math.PI);
@@ -499,46 +666,55 @@ async function getSupabaseLib(){
 
     const { data, error } = await SB
       .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng', { count: 'exact' })
+      .select('ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng', { count:'exact' })
       .not('lat','is',null).not('lng','is',null)
       .gte('lat', minLat).lte('lat', maxLat)
       .gte('lng', minLng).lte('lng', maxLng)
       .limit(1000);
 
-    if (error) {
+    if (error){
       console.error(error);
       toast('Lỗi truy vấn Supabase','err');
-      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+      $('#tbody').innerHTML =
+        `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
       $('#countInfo').textContent = `0 dòng (lỗi truy vấn)`;
       return;
     }
 
     const rows = (Array.isArray(data)?data:[])
       .map(r=>({ ...r, rlat:Number(r.lat), rlng:Number(r.lng) }))
-      .filter(r => Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
+      .filter(r=>Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
 
-    let nearby = rows.map(r => {
+    let nearby = rows.map(r=>{
       const dLat = (r.rlat - lat) * d2r;
       const dLng = (r.rlng - lng) * d2r;
-      const a = Math.sin(dLat/2)**2 + Math.cos(latR)*Math.cos(r.rlat*d2r)*Math.sin(dLng/2)**2;
-      const dist = 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(latR)*Math.cos(r.rlat*d2r)*Math.sin(dLng/2)**2;
+      const dist = 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
       return { ...r, dist: Math.round(dist) };
-    }).filter(r => r.dist <= radius)
-      .sort((a,b)=>a.dist-b.dist);
+    }).filter(r=>r.dist <= radius)
+      .sort((a,b)=>a.dist - b.dist);
 
-    if (nearby.length === 0) {
+    if (nearby.length === 0){
       toast(`Không có KH trong ${(Math.round(radius/100)/10)} km`, 'info');
-      $('#tbody').innerHTML=`<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-      $('#countInfo').textContent = `0 dòng (lọc ${Math.round(radius)}m)`;
+      $('#tbody').innerHTML =
+        `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+      $('#countInfo').textContent =
+        `0 dòng (lọc ${Math.round(radius)}m)`;
     } else {
       toast(`Tìm thấy ${nearby.length} KH trong ${(Math.round(radius/100)/10)} km`, 'ok');
-      const html = nearby.map(r=>`
+      const html = nearby.map(r=>{
+        const disabled = CHECKED_TODAY === true;
+        const btnHtml = disabled
+          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="Nhân viên đã checkin hôm nay">${r.ma_kh}</button>`
+          : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>`;
+        return `
         <tr data-id="${escAttr(r.ma_kh)}"
             data-ten_kh="${escAttr(r.ten_kh||'')}"
             data-dien_thoai="${escAttr(r.dien_thoai||'')}">
 
           <td class="col-ma">
-            <button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>
+            ${btnHtml}
           </td>
           <td class="col-ten">
             ${escAttr(r.ten_kh||'')}
@@ -548,14 +724,19 @@ async function getSupabaseLib(){
           <td class="col-actions">
             <button class="btn btn-warn btn-edit">Sửa</button>
           </td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
 
       $('#tbody').innerHTML = html;
-      $('#countInfo').textContent = `${nearby.length} dòng (lọc ${Math.round(radius)}m)`;
+      $('#countInfo').textContent =
+        `${nearby.length} dòng (lọc ${Math.round(radius)}m)`;
 
-      $$('#tbody .btn-edit').forEach(b=>b.addEventListener('click',onEditClick));
-      $$('#tbody .ma-kh-btn').forEach(b=>b.addEventListener('click',()=>onMaKHClick(b.dataset.id)));
+      $$('#tbody .btn-edit').forEach(b =>
+        b.addEventListener('click', onEditClick)
+      );
+      $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
+        b.addEventListener('click', () => onMaKHClick(b.dataset.id))
+      );
     }
   }
 
@@ -581,23 +762,29 @@ async function getSupabaseLib(){
   });
 
   // ======================= init =======================
-  try {
+  try{
     SB = await makeClient();
+
+    // Kiểm tra: NV hiện tại đã checkin hôm nay chưa?
+    await loadCheckedToday();
+
     initRadiusFromURLOrDefault();
 
     const coords = getLatLngFromURL();
-    if (coords) {
+    if (coords){
       const r = getRadiusFromUI();
       toast(`lat=${coords.lat.toFixed(6)} • lng=${coords.lng.toFixed(6)} • r=${Math.round(r)}m`, 'ok');
       runNearby(coords.lat, coords.lng, r);
-    } else {
+    }else{
       loadData();
     }
-  } catch (e) {
+  }catch(e){
     console.error(e);
-    $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Lỗi khởi tạo: ${e.message}</td></tr>`;
+    $('#tbody').innerHTML =
+      `<tr><td colspan="4" class="muted">Lỗi khởi tạo: ${e.message}</td></tr>`;
   }
 })();
 </script>
+
 </body>
 </html>
