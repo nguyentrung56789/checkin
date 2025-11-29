@@ -54,6 +54,17 @@
     .btn-primary{background:var(--accent);color:#001226}
     .btn-ok{background:var(--ok);color:#02220f}
     .btn-warn{background:var(--warn)}
+
+    /* Nút bị khóa (sau khi đã checkin hôm nay) */
+    .btn-disabled{
+      background:#4b5563 !important;
+      color:#cbd5f5 !important;
+      cursor:not-allowed !important;
+      opacity:.7;
+      box-shadow:none !important;
+      pointer-events:none;
+    }
+
     .input{
       padding:8px 10px;
       background:#0f1628;
@@ -208,9 +219,11 @@
   <div class="modal">
     <h3 id="modalTitle">Thêm khách hàng</h3>
     <div class="grid">
-      <label class="span2">Mã KH (khóa):
-        <input id="f_ma_kh" class="input" placeholder="Để trống sẽ tự sinh yymmddhhmm">
+      <label class="span2" id="maKhRow">Mã KH (khóa):
+        <!-- readonly: nhìn được khi SỬA nhưng không được gõ -->
+        <input id="f_ma_kh" class="input" readonly>
       </label>
+
       <label class="span2">Tên KH: <input id="f_ten_kh" class="input" placeholder="VD: Nguyễn Văn A"></label>
       <label class="span2">Địa chỉ: <input id="f_dia_chi" class="input" placeholder="Số nhà, đường..."></label>
       <label class="span2">Điện thoại: <input id="f_dien_thoai" class="input" placeholder="VD: 09xxxxxxxx"></label>
@@ -266,7 +279,7 @@ async function getSupabaseLib(){
 
   let SB            = null;
   let CURRENT       = null;
-  let CHECKED_TODAY = false; // true = NV này đã checkin hôm nay (khóa toàn bộ nút mã KH)
+  let CHECKED_TODAY = false; // true = NV này đã checkin hôm nay (khóa)
 
   // ===== Helpers chung =====
   function getLatLngFromURL(){
@@ -363,6 +376,30 @@ async function getSupabaseLib(){
     return `${dd}/${mm}/${yyyy}`;
   }
 
+  // ===== Khóa / mở khóa nút theo CHECKED_TODAY =====
+  function applyCheckedTodayLock(){
+    const btnAdd = $('#btnAdd');
+    if (btnAdd){
+      if (CHECKED_TODAY){
+        btnAdd.classList.add('btn-disabled');
+        btnAdd.disabled = true;
+      }else{
+        btnAdd.classList.remove('btn-disabled');
+        btnAdd.disabled = false;
+      }
+    }
+
+    $$('#tbody .btn-edit').forEach(b=>{
+      if (CHECKED_TODAY){
+        b.classList.add('btn-disabled');
+        b.disabled = true;
+      }else{
+        b.classList.remove('btn-disabled');
+        b.disabled = false;
+      }
+    });
+  }
+
   // ==== Kiểm tra xem NV hiện tại đã checkin hôm nay chưa ====
   async function loadCheckedToday(){
     CHECKED_TODAY = false;
@@ -439,6 +476,7 @@ async function getSupabaseLib(){
     }
     $('#modalWrap').style.display = 'flex';
   }
+
   const closeModal = () => $('#modalWrap').style.display='none';
 
   // ===== Supabase client =====
@@ -504,6 +542,9 @@ async function getSupabaseLib(){
     $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
       b.addEventListener('click', () => onMaKHClick(b.dataset.id))
     );
+
+    // áp dụng trạng thái khóa cho nút Thêm + Sửa
+    applyCheckedTodayLock();
   }
 
   function onEditClick(e){
@@ -543,14 +584,19 @@ async function getSupabaseLib(){
     try{
       const res = await postWebhook(payload);
       if (res.ok){
-        // Sau khi checkin thành công: khóa toàn bộ nút mã KH
+        // Sau khi checkin thành công: khóa toàn bộ
         CHECKED_TODAY = true;
+
+        // khóa nút mã KH
         $$('.ma-kh-btn').forEach(btn=>{
           btn.classList.add('ma-kh-disabled');
           btn.disabled = true;
           btn.removeAttribute('data-id');
           btn.title = 'Nhân viên đã checkin hôm nay';
         });
+
+        // khóa nút Thêm + Sửa
+        applyCheckedTodayLock();
 
         toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
       } else {
@@ -737,6 +783,9 @@ async function getSupabaseLib(){
       $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
         b.addEventListener('click', () => onMaKHClick(b.dataset.id))
       );
+
+      // áp dụng trạng thái khóa
+      applyCheckedTodayLock();
     }
   }
 
@@ -767,6 +816,9 @@ async function getSupabaseLib(){
 
     // Kiểm tra: NV hiện tại đã checkin hôm nay chưa?
     await loadCheckedToday();
+
+    // áp dụng khóa cho nút Thêm (trước khi render bảng)
+    applyCheckedTodayLock();
 
     initRadiusFromURLOrDefault();
 
