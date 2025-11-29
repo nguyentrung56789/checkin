@@ -11,9 +11,9 @@
 
   <style>
     :root{
-      --bg:#f3f4f6;          /* nền ngoài xám trắng */
-      --panel:#ffffff;       /* khối trắng */
-      --panel-soft:#f9fafb;  /* hàng xen kẽ */
+      --bg:#f3f4f6;
+      --panel:#ffffff;
+      --panel-soft:#f9fafb;
       --muted:#6b7280;
       --text:#111827;
       --accent:#2563eb;
@@ -29,27 +29,22 @@
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
     .wrap{
-      max-width:1100px;
+      max-width:480px;          /* giống màn hình ĐT */
       margin:16px auto 32px;
       padding:0 12px;
     }
 
     .top-bar{
       display:flex;
-      align-items:flex-start;
+      align-items:center;
       justify-content:space-between;
       gap:12px;
-      margin-bottom:16px;
+      margin-bottom:12px;
     }
     .top-left h1{
-      margin:0 0 4px;
-      font-size:26px;
-      letter-spacing:0.01em;
-    }
-    .top-left p{
       margin:0;
-      font-size:13px;
-      color:var(--muted);
+      font-size:22px;
+      letter-spacing:0.01em;
     }
     .top-right{
       display:flex;
@@ -76,7 +71,7 @@
       background:#eff6ff;
       border:1px solid var(--accent);
       color:var(--accent);
-      padding-inline:24px;
+      padding-inline:18px;
       font-weight:500;
     }
 
@@ -88,7 +83,7 @@
       border-radius:18px;
       padding:14px 16px;
       border:1px solid var(--border);
-      margin-bottom:12px;
+      margin-bottom:10px;
       box-shadow:0 10px 20px rgba(15,23,42,0.04);
     }
     .filter-item{
@@ -103,7 +98,7 @@
       color:var(--muted);
     }
     .filter-item select,
-    .filter-item input[type="date"]{
+    .filter-item input{
       padding:8px 10px;
       border-radius:10px;
       border:1px solid var(--border);
@@ -112,7 +107,7 @@
       font-size:14px;
     }
     .filter-item select:focus,
-    .filter-item input[type="date"]:focus{
+    .filter-item input:focus{
       outline:none;
       border-color:var(--accent);
       box-shadow:0 0 0 1px var(--accent-soft);
@@ -123,7 +118,7 @@
       align-items:flex-end;
     }
 
-    /* Dải nút chọn nhanh thời gian (giống KiotViet đơn giản) */
+    /* Dải nút chọn nhanh thời gian */
     .range-presets{
       display:flex;
       flex-wrap:wrap;
@@ -146,20 +141,29 @@
       font-weight:500;
     }
 
+    /* Hàng Từ / Đến trên 1 dòng */
     .range-custom{
       display:flex;
       align-items:center;
-      gap:6px;
+      gap:12px;
       margin-top:6px;
       font-size:13px;
       color:var(--muted);
+      flex-wrap:wrap;
     }
-    .range-custom span{
-      padding:0 4px;
+    .range-custom .row-item{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .range-custom .row-item label{
+      font-size:13px;
+      color:var(--muted);
     }
 
     .status{
-      margin:8px 2px 10px;
+      margin:6px 2px 8px;
       font-size:13px;
       display:flex;
       align-items:center;
@@ -187,7 +191,6 @@
       box-shadow:0 18px 30px rgba(15,23,42,0.04);
     }
 
-    /* Bảng: ngày & tên_kh bằng nhau, địa chỉ tự giãn */
     table{
       width:100%;
       border-collapse:collapse;
@@ -198,7 +201,7 @@
       background:#f9fafb;
     }
     th,td{
-      padding:9px 12px;
+      padding:8px 10px;
       border-bottom:1px solid var(--border);
     }
     th{
@@ -213,30 +216,99 @@
     /* STT */
     th:nth-child(1),
     td:nth-child(1){
-      width:60px;
+      width:40px;
       text-align:center;
       color:var(--muted);
     }
 
-    /* Ngày & Tên KH: cùng width, ellipsis nếu dài */
+    /* Ngày + Tên KH */
     th:nth-child(2), td:nth-child(2),
     th:nth-child(3), td:nth-child(3){
-      width:200px;
-      white-space:nowrap;
+      width:120px;
+      white-space:normal;
       overflow:hidden;
       text-overflow:ellipsis;
     }
 
-    /* Địa chỉ: auto giãn + cho phép xuống dòng */
-    th:nth-child(4), td:nth-child(4){
-      width:auto;
-      white-space:normal;
+    /* Địa chỉ: tối đa 2 dòng */
+    .col-diachi{
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      overflow:hidden;
       word-break:break-word;
     }
 
+    .col-date-main{
+      display:block;
+    }
+    .col-date-time{
+      display:block;
+      font-size:12px;
+      color:var(--muted);
+      margin-top:2px;
+    }
+
     @media (max-width:640px){
-      .top-bar{flex-direction:column;align-items:flex-start;}
-      .top-right{align-self:stretch;justify-content:flex-end;}
+      .wrap{
+        margin:8px auto 16px;
+        padding:0 8px;
+      }
+      .top-bar{
+        flex-direction:column;
+        align-items:flex-start;
+        gap:6px;
+      }
+      .top-left h1{
+        font-size:20px;
+      }
+      .top-right{
+        align-self:stretch;
+        justify-content:flex-end;
+      }
+      .btn-map{
+        width:100%;
+        justify-content:center;
+        padding-inline:12px;
+      }
+
+      .filter-bar{
+        padding:10px 10px;
+        border-radius:14px;
+      }
+      .filter-item{
+        min-width:100%;
+        flex:1 1 100%;
+      }
+      .filter-actions{
+        align-items:center;
+      }
+      .filter-item select,
+      .filter-item input{
+        font-size:13px;
+        padding:7px 9px;
+      }
+      .range-presets{
+        gap:4px;
+      }
+      .range-pill{
+        padding:5px 8px;
+        font-size:11px;
+      }
+
+      .status{
+        font-size:12px;
+        margin-top:6px;
+      }
+      .table-wrap{
+        border-radius:14px;
+      }
+      table{
+        font-size:13px;
+      }
+      th,td{
+        padding:7px 8px;
+      }
     }
   </style>
 </head>
@@ -244,8 +316,7 @@
   <div class="wrap">
     <header class="top-bar">
       <div class="top-left">
-        <h1>Báo cáo check-in khách hàng</h1>
-        <p>Hiển thị dữ liệu từ Supabase (nv_checkin) – lọc theo khoảng ngày &amp; mã nhân viên</p>
+        <h1>Báo cáo check-in</h1>
       </div>
       <div class="top-right">
         <button id="btnMap" class="btn btn-map">
@@ -263,7 +334,7 @@
         </select>
       </div>
 
-      <!-- Lọc thời gian kiểu KiotViet đơn giản -->
+      <!-- Lọc thời gian -->
       <div class="filter-item">
         <label>Thời gian</label>
         <div class="range-presets">
@@ -274,10 +345,14 @@
           <button class="range-pill" data-range="custom">Tùy chọn</button>
         </div>
         <div class="range-custom">
-          <span>Từ:</span>
-          <input type="date" id="fromDate" />
-          <span>Đến:</span>
-          <input type="date" id="toDate" />
+          <div class="row-item">
+            <label for="fromDate">Từ:</label>
+            <input type="date" id="fromDate" />
+          </div>
+          <div class="row-item">
+            <label for="toDate">Đến:</label>
+            <input type="date" id="toDate" />
+          </div>
         </div>
       </div>
 
@@ -297,8 +372,8 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>Ngày check-in</th>
-            <th>Tên khách hàng</th>
+            <th>Ngày</th>
+            <th>Tên KH</th>
             <th>Địa chỉ</th>
           </tr>
         </thead>
@@ -308,22 +383,25 @@
   </div>
 
   <script>
-    // ========= CONFIG SUPABASE =========
     const CFG_CACHE_KEY = 'nv_checkin_cfg_v5';
 
     function setStatus(text, mode){
       const box = document.getElementById('status');
+      if(!box) return;
       const dot = box.querySelector('.status-dot');
-      const span = box.querySelector('span:last-child');
-      span.textContent = text;
+      const spans = box.querySelectorAll('span');
+      const msgSpan = spans[spans.length-1];
+      if(msgSpan) msgSpan.textContent = text;
 
       box.classList.remove('ok','warn','err');
       if(mode) box.classList.add(mode);
 
-      if(mode === 'ok')         dot.style.background = '#22c55e';
-      else if(mode === 'warn')  dot.style.background = '#f59e0b';
-      else if(mode === 'err')   dot.style.background = '#ef4444';
-      else                      dot.style.background = '#9ca3af';
+      if(dot){
+        if(mode === 'ok')         dot.style.background = '#22c55e';
+        else if(mode === 'warn')  dot.style.background = '#f59e0b';
+        else if(mode === 'err')   dot.style.background = '#ef4444';
+        else                      dot.style.background = '#9ca3af';
+      }
     }
 
     async function getSbConfig(){
@@ -373,7 +451,6 @@
       return supa;
     }
 
-    // ========= DOM =========
     const $  = s => document.querySelector(s);
     const maNvSelect  = $('#maNvSelect');
     const btnFilter   = $('#btnFilter');
@@ -383,7 +460,7 @@
     const toDateEl    = $('#toDate');
     const presetBtns  = document.querySelectorAll('.range-pill');
 
-    // yyyy-mm-dd -> dd/MM/yyyy (để khớp cột 'ngay' dạng chuỗi dd/MM/yyyy hoặc dd/MM/yyyy hh:mm)
+    // yyyy-mm-dd -> dd/MM/yyyy
     function ymdToDmy(ymd){
       if(!ymd || !ymd.includes('-')) return '';
       const [y,m,d] = ymd.split('-');
@@ -407,34 +484,31 @@
       return res;
     }
 
-    // set from/to theo preset kiểu KiotViet đơn giản
     function applyPreset(key){
       const today = new Date();
       let start = new Date(today);
       let end   = new Date(today);
 
-      if(key === 'today'){
-        // start = end = hôm nay
-      }else if(key === 'yesterday'){
+      if(key === 'yesterday'){
         start.setDate(start.getDate()-1);
         end.setDate(end.getDate()-1);
       }else if(key === '7d'){
-        start.setDate(start.getDate()-6); // 7 ngày: hôm nay + 6 ngày trước
+        start.setDate(start.getDate()-6);
       }else if(key === '30d'){
         start.setDate(start.getDate()-29);
       }else if(key === 'custom'){
-        // để user tự nhập from/to
         return;
       }
 
-      const fmt = d => {
+      const fmtYmd = d => {
         const yyyy = d.getFullYear();
         const mm   = String(d.getMonth()+1).padStart(2,'0');
         const dd   = String(d.getDate()).padStart(2,'0');
         return `${yyyy}-${mm}-${dd}`;
       };
-      fromDateEl.value = fmt(start);
-      toDateEl.value   = fmt(end);
+
+      fromDateEl.value = fmtYmd(start);
+      toDateEl.value   = fmtYmd(end);
     }
 
     function setActivePreset(btn){
@@ -442,7 +516,6 @@
       if(btn) btn.classList.add('active');
     }
 
-    // ========= INIT =========
     (async function init(){
       try{
         await ensureSupa();
@@ -455,7 +528,6 @@
 
       await loadMaNvOptions();
 
-      // chọn mặc định "Hôm nay"
       const todayBtn = document.querySelector('.range-pill[data-range="today"]');
       applyPreset('today');
       setActivePreset(todayBtn);
@@ -474,16 +546,18 @@
       btnFilter.addEventListener('click', fetchData);
       maNvSelect.addEventListener('change', fetchData);
 
-      fromDateEl.addEventListener('change', ()=> {
-        setActivePreset(document.querySelector('.range-pill[data-range="custom"]'));
+      fromDateEl.addEventListener('change', ()=>{
+        const customBtn = document.querySelector('.range-pill[data-range="custom"]');
+        setActivePreset(customBtn);
       });
-      toDateEl.addEventListener('change', ()=> {
-        setActivePreset(document.querySelector('.range-pill[data-range="custom"]'));
+      toDateEl.addEventListener('change', ()=>{
+        const customBtn = document.querySelector('.range-pill[data-range="custom"]');
+        setActivePreset(customBtn);
       });
 
       btnMap.addEventListener('click', () => {
-        const from = fromDateEl.value;
-        const to   = toDateEl.value;
+        const from = fromDateEl.value; // yyyy-mm-dd
+        const to   = toDateEl.value;   // yyyy-mm-dd
         const nv   = maNvSelect.value;
         const qs = new URLSearchParams();
         if(from) qs.set('from', from);
@@ -496,7 +570,6 @@
       await fetchData();
     })();
 
-    // ========= LOAD DANH SÁCH NHÂN VIÊN (ma_nv DISTINCT) =========
     async function loadMaNvOptions(){
       const sb = await ensureSupa();
       setStatus('Đang tải danh sách nhân viên...', 'warn');
@@ -529,12 +602,12 @@
       setStatus('Supabase sẵn sàng. Mời chọn thời gian / nhân viên.', 'ok');
     }
 
-    // ========= LẤY DỮ LIỆU – LỌC THEO KHOẢNG NGÀY + ma_nv =========
     async function fetchData(){
       const sb  = await ensureSupa();
       const nv  = maNvSelect.value;
-      const fYmd = fromDateEl.value; // yyyy-mm-dd
-      const tYmd = toDateEl.value;   // yyyy-mm-dd
+
+      const fYmd = fromDateEl.value;
+      const tYmd = toDateEl.value;
 
       setStatus('Đang tải dữ liệu từ nv_checkin...', 'warn');
       btnFilter.disabled = true;
@@ -542,14 +615,12 @@
       try{
         let q = sb.from('nv_checkin').select('*').order('ngay',{ascending:false});
 
-        // nếu có khoảng ngày -> tạo list ngày và build or()
         const days = listDates(fYmd, tYmd);
 
         if(days.length === 1){
           const d = ymdToDmy(days[0]); // dd/MM/yyyy
           q = q.like('ngay', d + '%');
         }else if(days.length > 1){
-          // tạo chuỗi OR: ngay.like.dd/MM/yyyy%,ngay.like.dd/MM/yyyy2%,...
           const orStr = days.map(d => {
             const ddmmyyyy = ymdToDmy(d);
             return `ngay.like.${ddmmyyyy}%`;
@@ -577,7 +648,6 @@
       }
     }
 
-    // ========= RENDER BẢNG =========
     function renderRows(rows){
       tbody.innerHTML = '';
 
@@ -602,14 +672,20 @@
 
         td1.textContent = idx + 1;
 
-        // Ngày check-in: nếu bạn chỉ muốn lấy phần ngày, bỏ giờ:
-        // td2.textContent = (r.ngay || '').split(' ')[0];
-        td2.textContent = r.ngay || '';
+        const ngayRaw = r.ngay || '';
+        const parts   = ngayRaw.split(' ');
+        const dayPart  = parts[0] || '';
+        const timePart = parts[1] || '';
+
+        td2.innerHTML =
+          `<span class="col-date-main">${dayPart}</span>` +
+          (timePart ? `<span class="col-date-time">${timePart}</span>` : '');
 
         const tenKh = r.ten_kh || r.ma_kh || '';
         td3.textContent = tenKh;
 
         td4.textContent = r.dia_chi || '';
+        td4.className = 'col-diachi';
 
         tr.appendChild(td1);
         tr.appendChild(td2);
