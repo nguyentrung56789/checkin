@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bản đồ check-in</title>
+
+  <!-- Leaflet Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root{
+      --topbar-h: 52px; /* chiều cao thanh trên cùng */
+    }
+    html,body{
+      margin:0;
+      padding:0;
+      height:100%;
+      overflow:hidden;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    }
+
+    /* Map chiếm toàn bộ phần dưới top-bar, tự co giãn theo màn hình ĐT */
+    #map{
+      position:fixed;
+      top:var(--topbar-h);
+      left:0;
+      right:0;
+      bottom:0;
+      width:100%;
+      height:auto;
+    }
+
+    .top-bar{
+      position:fixed;
+      top:0;left:0;right:0;
+      height:var(--topbar-h);
+      padding:10px 14px;
+      box-sizing:border-box;
+      background:rgba(255,255,255,0.9);
+      backdrop-filter:blur(6px);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      z-index:999;
+      border-bottom:1px solid #e5e7eb;
+    }
+    .title{
+      font-size:16px;
+      font-weight:600;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .btn{
+      padding:6px 14px;
+      border:none;
+      border-radius:999px;
+      background:#2563eb;
+      color:white;
+      font-size:13px;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+
+    @media (max-width:640px){
+      .title{ font-size:15px; }
+      .btn{
+        padding:5px 12px;
+        font-size:12px;
+      }
+      :root{
+        --topbar-h: 48px; /* hơi thấp hơn trên màn nhỏ */
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Thanh tiêu đề -->
+  <div class="top-bar">
+    <div class="title">📍 Bản đồ check-in</div>
+    <button class="btn" onclick="history.back()">⬅ Quay lại</button>
+  </div>
+
+  <div id="map"></div>
+
+<script>
+const ROW_CACHE_KEY = 'nv_checkin_last_rows';
+
+(function init(){
+  // 1. Lấy dữ liệu đã lọc từ localStorage
+  let rows = [];
+  try{
+    const raw = localStorage.getItem(ROW_CACHE_KEY);
+    if(raw){
+      rows = JSON.parse(raw) || [];
+    }
+  }catch(_){}
+
+  if(!rows || !rows.length){
+    alert('Không có dữ liệu check-in. Vui lòng mở từ trang báo cáo sau khi đã lọc.');
+    return;
+  }
+
+  // 2. Khởi tạo map (tâm mặc định – có thể chỉnh)
+  const map = L.map('map').setView([20.85,106.68], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:19
+  }).addTo(map);
+
+  // 3. Vẽ marker từ dữ liệu đã lọc
+  const markers = [];
+
+  rows.forEach(r=>{
+    if(!r.lat || !r.lng) return;
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lng);
+    if(isNaN(lat) || isNaN(lng)) return;
+
+    const tenKh   = r.ten_kh || r.ma_kh || '';
+    const ngay    = r.ngay || '';
+    const diaChi  = r.dia_chi || '---';
+    const nhanVien= r.ten_nv || r.ma_nv || '';
+
+    const mk = L.marker([lat,lng]).addTo(map)
+      .bindPopup(`
+        <b>${tenKh}</b><br>
+        Ngày: ${ngay}<br>
+        Địa chỉ: ${diaChi}<br>
+        NV: ${nhanVien}
+      `);
+
+    markers.push(mk);
+  });
+
+  if(markers.length){
+    const grp = L.featureGroup(markers);
+    map.fitBounds(grp.getBounds(), {padding:[40,40]});
+  }else{
+    alert('Không có điểm nào có toạ độ (lat/lng) để hiển thị trên bản đồ.');
+  }
+})();
+</script>
+
+</body>
+</html>
