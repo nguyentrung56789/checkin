@@ -11,7 +11,7 @@
 
   <style>
     :root{
-      --topbar-h: 52px; /* chiều cao thanh trên cùng */
+      --marker-bg:#2563eb;
     }
     html,body{
       margin:0;
@@ -21,57 +21,79 @@
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
 
-    /* Map chiếm toàn bộ phần dưới top-bar, tự co giãn theo màn hình ĐT */
     #map{
       position:fixed;
-      top:var(--topbar-h);
-      left:0;
-      right:0;
-      bottom:0;
+      inset:0;
       width:100%;
-      height:auto;
+      height:100%;
     }
 
-    .top-bar{
+    /* Panel lọc hàng ngang */
+    .map-controls{
       position:fixed;
-      top:0;left:0;right:0;
-      height:var(--topbar-h);
-      padding:10px 14px;
-      box-sizing:border-box;
-      background:rgba(255,255,255,0.9);
-      backdrop-filter:blur(6px);
+      top:10px;
+      left:10px;
+      z-index:1000;
+      background:rgba(255,255,255,0.95);
+      border-radius:12px;
+      padding:6px 8px;
+      box-shadow:0 10px 20px rgba(15,23,42,0.18);
       display:flex;
       align-items:center;
-      justify-content:space-between;
-      z-index:999;
-      border-bottom:1px solid #e5e7eb;
+      gap:6px;
+      font-size:12px;
     }
-    .title{
-      font-size:16px;
-      font-weight:600;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+    .map-controls input,
+    .map-controls select{
+      font-size:12px;
+      padding:3px 6px;
+      border-radius:8px;
+      border:1px solid #d1d5db;
+      background:#f9fafb;
+      height:28px;
     }
-    .btn{
-      padding:6px 14px;
-      border:none;
-      border-radius:999px;
+
+    /* Badge đếm */
+    .count-badge{
       background:#2563eb;
-      color:white;
-      font-size:13px;
-      cursor:pointer;
-      white-space:nowrap;
+      color:#fff;
+      padding:3px 8px;
+      border-radius:10px;
+      font-size:12px;
+      font-weight:600;
+      margin-left:4px;
+    }
+
+    /* Marker đánh số */
+    .num-marker{
+      background:var(--marker-bg);
+      color:#fff;
+      width:26px;
+      height:26px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:12px;
+      font-weight:600;
+      border:2px solid #ffffff;
+      box-shadow:0 0 0 1px rgba(15,23,42,0.25), 0 6px 10px rgba(15,23,42,0.3);
     }
 
     @media (max-width:640px){
-      .title{ font-size:15px; }
-      .btn{
-        padding:5px 12px;
-        font-size:12px;
+      .map-controls{
+        left:8px;
+        right:8px;
+        gap:4px;
       }
-      :root{
-        --topbar-h: 48px; /* hơi thấp hơn trên màn nhỏ */
+      .map-controls input,
+      .map-controls select{
+        font-size:11px;
+        padding:2px 5px;
+        height:26px;
+      }
+      .num-marker{
+        width:24px;height:24px;font-size:11px;
       }
     }
   </style>
@@ -79,10 +101,18 @@
 
 <body>
 
-  <!-- Thanh tiêu đề -->
-  <div class="top-bar">
-    <div class="title">📍 Bản đồ check-in</div>
-    <button class="btn" onclick="history.back()">⬅ Quay lại</button>
+  <!-- Panel lọc -->
+  <div class="map-controls">
+    <input type="date" id="dateFilter" />
+    <select id="shiftFilter">
+      <option value="">Cả ngày</option>
+      <option value="morning">Sáng</option>
+      <option value="afternoon">Chiều</option>
+    </select>
+    <select id="nvFilter">
+      <option value="">Tất cả</option>
+    </select>
+    <span id="countBadge" class="count-badge">0</span>
   </div>
 
   <div id="map"></div>
@@ -91,57 +121,208 @@
 const ROW_CACHE_KEY = 'nv_checkin_last_rows';
 
 (function init(){
-  // 1. Lấy dữ liệu đã lọc từ localStorage
-  let rows = [];
+  let rawRows = [];
   try{
-    const raw = localStorage.getItem(ROW_CACHE_KEY);
-    if(raw){
-      rows = JSON.parse(raw) || [];
-    }
+    rawRows = JSON.parse(localStorage.getItem(ROW_CACHE_KEY)) || [];
   }catch(_){}
 
-  if(!rows || !rows.length){
-    alert('Không có dữ liệu check-in. Vui lòng mở từ trang báo cáo sau khi đã lọc.');
+  if(!rawRows.length){
+    alert('Không có dữ liệu check-in.');
     return;
   }
 
-  // 2. Khởi tạo map (tâm mặc định – có thể chỉnh)
+  // Map
   const map = L.map('map').setView([20.85,106.68], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    maxZoom:19
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap & CARTO'
   }).addTo(map);
 
-  // 3. Vẽ marker từ dữ liệu đã lọc
+  const dateFilter   = document.getElementById('dateFilter');
+  const shiftFilter  = document.getElementById('shiftFilter');
+  const nvFilter     = document.getElementById('nvFilter');
+  const countBadge   = document.getElementById('countBadge');
+
+  // Parse ngày dd/MM/yyyy HH:mm
+  function parseNgay(ngayRaw){
+    if(!ngayRaw) return { ymd:null, hour:null };
+    const [dmy, hms] = ngayRaw.split(" ");
+    const [d,m,y] = dmy.split("/");
+    const ymd = `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+    const hour = hms ? parseInt(hms.split(":")[0]) : null;
+    return { ymd, hour };
+  }
+
+  const points = [];
   const markers = [];
 
-  rows.forEach(r=>{
+  // ==========================
+  //  CHUẨN BỊ ĐO KHOẢNG CÁCH
+  // ==========================
+  let measurePoints = [];          // [{latlng, index}]
+  let measureLine = null;
+
+  const resultDiv = L.control({ position: "topright" });
+  resultDiv.onAdd = function () {
+    this._div = L.DomUtil.create("div", "measure-result");
+    this._div.style =
+      "background: rgba(255,255,255,0.9); padding:8px 12px; border-radius:8px; font-size:13px; box-shadow:0 2px 6px rgba(0,0,0,0.2); display:none;";
+    this._div.innerHTML = "";
+    return this._div;
+  };
+  resultDiv.addTo(map);
+
+  function updateMeasureUI(text) {
+    resultDiv._div.style.display = "block";
+    resultDiv._div.innerHTML = "<b>" + text + "</b>";
+  }
+
+  function resetMeasure() {
+    measurePoints = [];
+    if (measureLine) {
+      map.removeLayer(measureLine);
+      measureLine = null;
+    }
+    resultDiv._div.style.display = "none";
+  }
+  // ==========================
+
+  rawRows.forEach((r, idx)=>{
     if(!r.lat || !r.lng) return;
     const lat = parseFloat(r.lat);
     const lng = parseFloat(r.lng);
-    if(isNaN(lat) || isNaN(lng)) return;
+    if(isNaN(lat)||isNaN(lng)) return;
 
-    const tenKh   = r.ten_kh || r.ma_kh || '';
-    const ngay    = r.ngay || '';
-    const diaChi  = r.dia_chi || '---';
-    const nhanVien= r.ten_nv || r.ma_nv || '';
+    const { ymd, hour } = parseNgay(r.ngay);
+    const stt = idx + 1;
 
-    const mk = L.marker([lat,lng]).addTo(map)
-      .bindPopup(`
-        <b>${tenKh}</b><br>
-        Ngày: ${ngay}<br>
-        Địa chỉ: ${diaChi}<br>
-        NV: ${nhanVien}
-      `);
+    const icon = L.divIcon({
+      html: `<div class="num-marker">${stt}</div>`,
+      className:'num-marker-wrap',
+      iconSize:[26,26],
+      iconAnchor:[13,13]
+    });
+
+    const mk = L.marker([lat,lng], {icon}).bindPopup(`
+      <b>${stt}. ${r.ten_kh || r.ma_kh || ""}</b><br>
+      Ngày: ${r.ngay}<br>
+      Địa chỉ: ${r.dia_chi || ""}<br>
+      NV: ${r.ten_nv || r.ma_nv || ""}
+    `);
+
+    mk.addTo(map);
+
+    // 👉 CLICK VÀO MARKER ĐỂ ĐO KHOẢNG CÁCH
+    mk.on("click", function () {
+      const latlng = mk.getLatLng();
+
+      // Nếu đã chọn 2 điểm rồi thì reset và bắt đầu lại
+      if (measurePoints.length === 2) {
+        resetMeasure();
+      }
+
+      measurePoints.push({ latlng, index: stt });
+
+      if (measurePoints.length === 1) {
+        // Mới chọn điểm đầu
+        updateMeasureUI("Đã chọn điểm đầu: #" + stt);
+      } else if (measurePoints.length === 2) {
+        // Đã có 2 điểm → tính khoảng cách
+        const a = measurePoints[0];
+        const b = measurePoints[1];
+
+        if (measureLine) {
+          map.removeLayer(measureLine);
+        }
+        measureLine = L.polyline([a.latlng, b.latlng], {
+          color: "#111",
+          weight: 3,
+          dashArray: "6,4"
+        }).addTo(map);
+
+        const km = a.latlng.distanceTo(b.latlng) / 1000;
+        const kmText = km.toFixed(2) + " km";
+
+        updateMeasureUI(
+          "Từ điểm #" + a.index + " → #" + b.index + ": " + kmText
+        );
+      }
+    });
 
     markers.push(mk);
+    points.push({
+      row:r, marker:mk,
+      dateYmd:ymd, hour,
+      ma_nv:r.ma_nv || "",
+      stt
+    });
   });
 
+  // Fit map khi load
   if(markers.length){
     const grp = L.featureGroup(markers);
     map.fitBounds(grp.getBounds(), {padding:[40,40]});
-  }else{
-    alert('Không có điểm nào có toạ độ (lat/lng) để hiển thị trên bản đồ.');
   }
+
+  // Danh sách NV
+  const nvSet = new Map();
+  points.forEach(p=>{
+    if(p.ma_nv && !nvSet.has(p.ma_nv)) nvSet.set(p.ma_nv, p.row.ten_nv || "");
+  });
+  nvSet.forEach((ten,ma)=>{
+    const opt=document.createElement("option");
+    opt.value=ma;
+    opt.textContent=ten?`${ma} - ${ten}`:ma;
+    nvFilter.appendChild(opt);
+  });
+
+  function applyFilter(){
+    const fDate = dateFilter.value || "";
+    const fShift= shiftFilter.value;
+    const fNv   = nvFilter.value;
+
+    const visible = [];
+
+    points.forEach(p=>{
+      let ok=true;
+
+      if(fDate && p.dateYmd!==fDate) ok=false;
+
+      if(ok && fShift){
+        if(p.hour!=null){
+          if(fShift==="morning" && p.hour>=12) ok=false;
+          if(fShift==="afternoon" && p.hour<12) ok=false;
+        }
+      }
+
+      if(ok && fNv){
+        if(p.ma_nv!==fNv) ok=false;
+      }
+
+      if(ok){
+        if(!map.hasLayer(p.marker)) p.marker.addTo(map);
+        visible.push(p.marker);
+      }else{
+        if(map.hasLayer(p.marker)) map.removeLayer(p.marker);
+      }
+    });
+
+    countBadge.textContent = visible.length;
+
+    if(visible.length){
+      const grp = L.featureGroup(visible);
+      map.fitBounds(grp.getBounds(), {padding:[40,40]});
+    }
+
+    // Khi lọc lại nên reset đo khoảng cách
+    resetMeasure();
+  }
+
+  dateFilter.addEventListener("change", applyFilter);
+  shiftFilter.addEventListener("change", applyFilter);
+  nvFilter.addEventListener("change", applyFilter);
+
+  countBadge.textContent = markers.length;
 })();
 </script>
 
