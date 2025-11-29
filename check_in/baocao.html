@@ -383,7 +383,9 @@
   </div>
 
   <script>
-    const CFG_CACHE_KEY = 'nv_checkin_cfg_v5';
+    const CFG_CACHE_KEY    = 'nv_checkin_cfg_v5';
+    const FILTER_CACHE_KEY = 'nv_checkin_filters_v1';
+    const ROW_CACHE_KEY    = 'nv_checkin_last_rows';
 
     function setStatus(text, mode){
       const box = document.getElementById('status');
@@ -460,6 +462,47 @@
     const toDateEl    = $('#toDate');
     const presetBtns  = document.querySelectorAll('.range-pill');
 
+    // ====== LƯU / KHÔI PHỤC BỘ LỌC ======
+    function getActivePresetKey(){
+      const btn = document.querySelector('.range-pill.active');
+      return btn ? btn.dataset.range : '';
+    }
+
+    function saveFilters(presetOverride){
+      try{
+        const activePreset = presetOverride || getActivePresetKey() || '';
+        const state = {
+          ma_nv : maNvSelect.value || '',
+          from  : fromDateEl.value || '',
+          to    : toDateEl.value   || '',
+          preset: activePreset
+        };
+        localStorage.setItem(FILTER_CACHE_KEY, JSON.stringify(state));
+      }catch(_){}
+    }
+
+    function restoreFilters(){
+      try{
+        const raw = localStorage.getItem(FILTER_CACHE_KEY);
+        if(!raw) return false;
+        const s = JSON.parse(raw);
+        if(!s) return false;
+
+        if(typeof s.ma_nv === 'string') maNvSelect.value = s.ma_nv;
+        if(typeof s.from === 'string')  fromDateEl.value = s.from || '';
+        if(typeof s.to === 'string')    toDateEl.value   = s.to   || '';
+
+        presetBtns.forEach(b => b.classList.remove('active'));
+        if(s.preset){
+          const btn = document.querySelector(`.range-pill[data-range="${s.preset}"]`);
+          if(btn) btn.classList.add('active');
+        }
+        return true;
+      }catch(_){
+        return false;
+      }
+    }
+
     // yyyy-mm-dd -> dd/MM/yyyy
     function ymdToDmy(ymd){
       if(!ymd || !ymd.includes('-')) return '';
@@ -528,45 +571,59 @@
 
       await loadMaNvOptions();
 
-      const todayBtn = document.querySelector('.range-pill[data-range="today"]');
-      applyPreset('today');
-      setActivePreset(todayBtn);
+      // Nếu có filter cũ thì dùng lại, không thì mặc định Hôm nay
+      const restored = restoreFilters();
+      if(!restored){
+        const todayBtn = document.querySelector('.range-pill[data-range="today"]');
+        applyPreset('today');
+        setActivePreset(todayBtn);
+      }
 
+      // Sự kiện preset
       presetBtns.forEach(btn=>{
         btn.addEventListener('click', ()=>{
           const key = btn.dataset.range;
           setActivePreset(btn);
           applyPreset(key);
+          saveFilters(key);
           if(key !== 'custom'){
             fetchData();
           }
         });
       });
 
-      btnFilter.addEventListener('click', fetchData);
-      maNvSelect.addEventListener('change', fetchData);
+      // Nút Lọc
+      btnFilter.addEventListener('click', ()=>{
+        saveFilters();
+        fetchData();
+      });
 
+      // Đổi nhân viên -> lọc luôn
+      maNvSelect.addEventListener('change', ()=>{
+        saveFilters();
+        fetchData();
+      });
+
+      // Đổi ngày -> chuyển sang "Tùy chọn", chưa auto lọc
       fromDateEl.addEventListener('change', ()=>{
         const customBtn = document.querySelector('.range-pill[data-range="custom"]');
         setActivePreset(customBtn);
+        saveFilters('custom');
       });
       toDateEl.addEventListener('change', ()=>{
         const customBtn = document.querySelector('.range-pill[data-range="custom"]');
         setActivePreset(customBtn);
+        saveFilters('custom');
       });
 
+      // Nút Mở bản đồ: chỉ đi sang bando_checkin, map sẽ đọc dữ liệu đã lưu
       btnMap.addEventListener('click', () => {
-        const from = fromDateEl.value; // yyyy-mm-dd
-        const to   = toDateEl.value;   // yyyy-mm-dd
-        const nv   = maNvSelect.value;
-        const qs = new URLSearchParams();
-        if(from) qs.set('from', from);
-        if(to)   qs.set('to', to);
-        if(nv)   qs.set('ma_nv', nv);
-        const url = 'map_tuyen.html' + (qs.toString() ? ('?' + qs.toString()) : '');
-        location.href = url;
+        // đảm bảo filter hiện tại đã lưu
+        saveFilters();
+        location.href = 'bando_checkin.html';
       });
 
+      // Lần đầu vào cũng load dữ liệu theo filter hiện tại
       await fetchData();
     })();
 
@@ -640,6 +697,11 @@
           setStatus('⚠️ Lỗi truy vấn nv_checkin: ' + error.message, 'err');
           return;
         }
+
+        // 👉 Lưu lại rows cho bản đồ dùng
+        try{
+          localStorage.setItem(ROW_CACHE_KEY, JSON.stringify(data || []));
+        }catch(_){}
 
         renderRows(data || []);
         setStatus(`Đang hiển thị ${(data || []).length} dòng check-in.`, 'ok');
