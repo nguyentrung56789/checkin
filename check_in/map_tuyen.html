@@ -2,59 +2,337 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bản đồ khách hàng — CSV</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Bản đồ Check-in KH</title>
 
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-<!-- Kiểm tra quyền truy cập bằng token -->
-<script src="./js/auth_token.js"></script>
-<script>checkAccess();</script>
+  <!-- Supabase -->
+  <script src="./js/internal_key.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html,body{
+      margin:0; padding:0;
+      height:100%;
+      overflow:hidden;
+      font-family:system-ui;
+    }
+    #map{
+      position:fixed;
+      inset:0;
+      width:100%;
+      height:100%;
+    }
 
-  <!-- App CSS -->
-  <link rel="stylesheet" href="./css/map_tuyen.css" />
+    /* Bỏ nút + - */
+    .leaflet-control-zoom{
+      display:none !important;
+    }
 
-  <!-- Libraries -->
-  <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js" defer></script>
+    /* Thanh điều khiển */
+    .top-controls{
+      position:fixed;
+      top:10px;
+      left:10px;
+      right:10px;
+      z-index:2000;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
 
-  <!-- PHẢI load trước file js app để có window.getConfig -->
-  <script src="./js/internal_key.js" defer></script>
+    .row{
+      display:flex;
+      gap:8px;
+      width:100%;
+    }
 
-  <!-- App JS -->
-  <script src="./js/map_tuyen.js" defer></script>
+    .row select, #searchBox{
+      flex:1;
+      padding:6px 8px;
+      font-size:14px;
+      border-radius:8px;
+      border:1px solid #d1d5db;
+      background:white;
+    }
+
+    /* Nút GPS */
+    #gpsBtn{
+      width:40px;
+      height:40px;
+      border-radius:50%;
+      border:none;
+      background:white;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow:0 4px 10px rgba(0,0,0,0.3);
+      font-size:20px;
+      cursor:pointer;
+    }
+
+    /* Marker màu đỏ */
+    .mk-red{
+      background:#ef4444;
+      color:white;
+      width:26px;height:26px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid white;
+      font-weight:600;
+      box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    /* Marker màu xanh */
+    .mk-green{
+      background:#22c55e;
+      color:white;
+      width:26px;height:26px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid white;
+      font-weight:600;
+      box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
+    }
+
+  </style>
 </head>
+
 <body>
-  <!-- Thanh bar: bấm để đóng khi nhúng trong iframe -->
-  <div id="mapHeader" class="map-header" title="Bấm để đóng">
-    <div class="grabber"></div>
-    <strong>🗺️ Bản đồ tuyến</strong>
-    <label><input id="vnOnly" type="checkbox" checked> Chỉ VN</label>
-    <span id="status" class="muted">Sẵn sàng</span>
+
+<!-- ====== THANH LỌC ====== -->
+<div class="top-controls">
+
+  <!-- HÀNG 1: GPS + LỌC MÀU + LỌC NHÂN VIÊN -->
+  <div class="row">
+    <button id="gpsBtn">📍</button>
+
+    <select id="colorFilter">
+      <option value="">Tất cả</option>
+      <option value="green">Xanh (có mua)</option>
+      <option value="red">Đỏ (chưa mua)</option>
+    </select>
+
+    <select id="nvFilter">
+      <option value="">Nhân viên</option>
+    </select>
   </div>
 
-  <div id="toolbar">
-    <button id="reload">Tải lại</button>
-    <div class="grow">
-      <input id="q" type="text" placeholder="Tìm: ma: KH0001 KH0002, ten: an lão, sdt: 098..., hoặc gõ từ khoá tự do..." />
-    </div>
+  <!-- HÀNG 2: Ô TÌM KIẾM -->
+  <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
 
-  </div>
-
- <div id="map"></div>
-
-<!-- Nút nổi cạnh nhau: 📍 định vị & 🚀 tới KH gần nhất -->
-<div id="mapToolbar" class="toolbar">
-  <!-- <button id="reload" title="Tải lại dữ liệu 🔄">🔄</button>--->
-  <button id="btnMyLocation" title="Định vị 📍">📍</button>
-  <button id="btnNearest" title="Tới KH gần nhất 🚀">🚀</button>
-  <!-- (đã bỏ) <button id="btnFollow" title="Theo dõi 👁️">👁️</button> -->
 </div>
 
+<div id="map"></div>
 
+<script>
+(async function(){
 
+  // ================== KẾT NỐI SUPABASE ==================
+  const supabase = window.supabase.createClient(
+    window.getConfig("url"),
+    window.getConfig("role") || window.getConfig("anon"),
+    {
+      global:{ headers:{ "x-internal-key": window.getInternalKey() } }
+    }
+  );
+
+  // ================== TẠO MAP ==================
+  const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
+    maxZoom:19
+  }).addTo(map);
+
+  // ================== LẤY KH ==================
+  const { data } = await supabase.from("nv_checkin_khach_hang").select("*");
+
+  let points = [];
+  let markers = [];
+
+  data.forEach((r,i)=>{
+    if(!r.lat || !r.lng) return;
+
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lng);
+    if(isNaN(lat)||isNaN(lng)) return;
+
+    const stt = i+1;
+    const isGreen = r.Da_mua_hang ? true : false;
+
+    const icon = L.divIcon({
+      html:`<div class="${isGreen?'mk-green':'mk-red'}">${stt}</div>`,
+      iconSize:[26,26],
+      iconAnchor:[13,13]
+    });
+
+    const mk = L.marker([lat,lng],{icon}).bindPopup(`
+      <b>${r.ten_kh || "Không tên"}</b><br>
+      Mã KH: ${r.ma_kh || ""}<br>
+      Địa chỉ: ${r.dia_chi || ""}<br>
+      ĐT: ${r.dien_thoai || ""}<br>
+      NV: ${r.ma_nv || ""}<br>
+      Đã mua: <b>${r.Da_mua_hang?'✔ Có':'✘ Không'}</b>
+    `);
+
+    mk.addTo(map);
+
+    points.push({
+      stt,
+      lat,
+      lng,
+      marker:mk,
+      color:isGreen ? "green" : "red",
+      nv:r.ma_nv || "",
+      row:r
+    });
+    markers.push(mk);
+  });
+
+  if(markers.length){
+    const grp = L.featureGroup(markers);
+    map.fitBounds(grp.getBounds(),{padding:[50,50]});
+  }
+
+  // ================== GPS ==================
+  let userMarker = null;
+  let userCircle = null;
+  let lastLat = null;
+  let lastLng = null;
+
+  function showGPS(lat,lng){
+    lastLat = lat;
+    lastLng = lng;
+
+    if(userMarker){
+      userMarker.setLatLng([lat,lng]);
+    } else {
+      userMarker = L.circleMarker([lat,lng],{
+        radius:8,
+        color:"#b91c1c",
+        fillColor:"#ef4444",
+        fillOpacity:1,
+        weight:3
+      }).addTo(map);
+    }
+
+    if(userCircle){
+      userCircle.setLatLng([lat,lng]);
+    } else {
+      userCircle = L.circle([lat,lng],{
+        radius:100,
+        color:"#f87171",
+        fillColor:"#fecaca",
+        fillOpacity:0.3,
+        weight:1
+      }).addTo(map);
+    }
+  }
+
+  if(navigator.geolocation){
+    navigator.geolocation.getCurrentPosition(pos=>{
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+
+      showGPS(lat,lng);
+      map.setView([lat,lng],18);
+    });
+
+    navigator.geolocation.watchPosition(
+      pos=>{
+        showGPS(pos.coords.latitude, pos.coords.longitude);
+      },
+      undefined,
+      { enableHighAccuracy:true, timeout:3000, maximumAge:0 }
+    );
+  }
+
+  document.getElementById("gpsBtn").onclick = ()=>{
+    if(lastLat && lastLng){
+      map.setView([lastLat,lastLng],18);
+    }
+  };
+
+  // ================== DROPDOWN LỌC NV ==================
+  const nvFilter = document.getElementById("nvFilter");
+  const nvSet = new Set();
+
+  points.forEach(p=>{
+    if(!p.nv) return;
+    p.nv.split("_").forEach(nv => nvSet.add(nv.trim()));
+  });
+
+  nvSet.forEach(nv=>{
+    const opt=document.createElement("option");
+    opt.value=nv;
+    opt.textContent=nv;
+    nvFilter.appendChild(opt);
+  });
+
+  // ================== LỌC (MÀU + NHÂN VIÊN + TÌM KIẾM) ==================
+  const colorFilter = document.getElementById("colorFilter");
+  const searchBox   = document.getElementById("searchBox");
+
+  function applyFilter(){
+    const fColor = colorFilter.value;
+    const fNV    = nvFilter.value;
+    const q      = searchBox.value.trim().toLowerCase();
+
+    points.forEach(p=>{
+      const r = p.row;
+      let ok = true;
+
+      // Lọc màu
+      if(fColor && p.color !== fColor) ok = false;
+
+      // Lọc nhân viên (tách theo "_")
+      if(fNV){
+        const nvList = p.nv.split("_").map(x=>x.trim()).filter(Boolean);
+        if(!nvList.includes(fNV)) ok = false;
+      }
+
+      // Lọc theo từ khoá
+      if(q){
+        const text = `
+          ${r.ma_kh || ""}
+          ${r.ten_kh || ""}
+          ${r.dia_chi || ""}
+          ${r.dien_thoai || ""}
+          ${r.ghi_ghu || ""}
+          ${r.ma_nv || ""}
+        `.toLowerCase();
+
+        if(!text.includes(q)) ok = false;
+      }
+
+      // Hiện / ẩn marker
+      if(ok){
+        if(!map.hasLayer(p.marker)) p.marker.addTo(map);
+      }else{
+        if(map.hasLayer(p.marker)) map.removeLayer(p.marker);
+      }
+    });
+
+    // Nếu chỉ còn 1 điểm sau khi lọc → zoom sát
+    const remain = points.filter(p => map.hasLayer(p.marker));
+    if(remain.length === 1){
+      map.setView([remain[0].lat, remain[0].lng], 18);
+    }
+  }
+
+  colorFilter.onchange = applyFilter;
+  nvFilter.onchange    = applyFilter;
+  searchBox.oninput    = applyFilter;
+
+})();
+</script>
 
 </body>
 </html>
