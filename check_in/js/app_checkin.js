@@ -216,6 +216,84 @@ function toast(t,type='info',ms=2400){
   },ms);
 }
 
+/* ================== GPS (BẮT BUỘC TRƯỚC KHI BẬT CAM) ================== */
+function openGeoHelp(){
+  const msg =
+`⚠️ Bạn đã chặn quyền vị trí.
+Cách bật lại nhanh:
+
+• Chrome/Edge (máy tính): bấm biểu tượng 🔒 cạnh thanh địa chỉ → Site settings → Location = Allow → tải lại trang.
+• Điện thoại: Settings → Privacy/Location → bật Location; và trong Chrome → Site settings → Location = Allow.
+
+Sau đó bấm lại "Bật camera".`;
+  try{ alert(msg); }catch{}
+}
+
+function getGeoPermStateSafe(){
+  return (navigator.permissions && navigator.permissions.query)
+    ? navigator.permissions.query({ name:'geolocation' }).then(p=>p.state).catch(()=>null)
+    : Promise.resolve(null);
+}
+
+// gọi 1 lần để hiện popup xin quyền + lấy tọa độ
+function getGPSOnce(){ 
+  return new Promise(resolve=>{
+    if(!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
+      err=>resolve({err}),
+      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+    );
+  });
+}
+
+// ✅ đảm bảo: denied => báo + return false
+// ✅ prompt => tự gọi getCurrentPosition để bật popup xin quyền
+// ✅ granted => cố lấy 1 tọa độ hợp lệ (lat != 0)
+async function ensureGeoAllowedAndGet(){
+  if(!('geolocation' in navigator)){
+    toast('Thiết bị không hỗ trợ vị trí (GPS)', 'err', 3500);
+    try{ alert('Thiết bị không hỗ trợ vị trí (GPS).'); }catch{}
+    return false;
+  }
+
+  const st = await getGeoPermStateSafe();
+
+  if (st === 'denied'){
+    toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
+    openGeoHelp();
+    return false;
+  }
+
+  // st === 'prompt' hoặc null => gọi để bật popup xin quyền
+  const r = await getGPSOnce();
+
+  // bị chặn ngay lúc popup
+  if (r && r.err){
+    const code = r.err.code;
+    if (code === 1){ // PERMISSION_DENIED
+      toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
+      openGeoHelp();
+      return false;
+    }
+    toast('⚠️ Không lấy được GPS. Hãy bật vị trí/GPS và thử lại.', 'err', 3500);
+    return false;
+  }
+
+  const lat = r?.lat ?? 0;
+  const lng = r?.lng ?? 0;
+
+  if (!lat || lat === 0 || !lng || lng === 0){
+    toast('⚠️ Chưa có vị trí GPS. Hãy bật vị trí rồi thử lại.', 'err', 3500);
+    try{ alert('⚠️ Chưa có vị trí GPS. Hãy bật vị trí/GPS rồi bấm lại "Bật camera".'); }catch{}
+    return false;
+  }
+
+  // lưu lại để các bước khác dùng (nếu cần)
+  window.__myLatLng = { lat, lng };
+  return true;
+}
+
 const CSS_DIGITAL_ZOOM_MAX = 5;
 
 /* ================== CAMERA, ZOOM, TORCH ================== */
@@ -229,12 +307,19 @@ function stopCam(){
   if (video) video.srcObject=null;
 }
 
-// Dùng logic giống checkin.js FINAL + ZOOM
+// ✅ startCam: BẮT BUỘC GPS trước rồi mới xin camera
 async function startCam(){
   try{
     // Tắt stream cũ
     stopCam();
     stage && stage.classList.remove('ready');
+
+    // ✅ BẮT BUỘC có GPS trước khi mở camera
+    const gpsReady = await ensureGeoAllowedAndGet();
+    if (!gpsReady) {
+      if (btnShot) btnShot.disabled = true;
+      return;
+    }
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('Trình duyệt không hỗ trợ camera');
@@ -301,7 +386,6 @@ async function startCam(){
     }, 200);
 
   }catch(e){
-
     console.error(e);
     if (btnShot) btnShot.disabled = true;
     stage && stage.classList.remove('ready');
@@ -400,7 +484,7 @@ btnTorch && (btnTorch.onclick = async ()=>{
   if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
 });
 
-/* ================== CANVAS & GPS ================== */
+/* ================== CANVAS ================== */
 function drawToCanvas(){
   if (!video || !canvas) return;
   const fw = video.videoWidth, fh = video.videoHeight;
@@ -419,70 +503,8 @@ function drawToCanvas(){
   canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
 }
 
-function getGPSOnce(){ 
-  return new Promise(resolve=>{
-    if(!('geolocation' in navigator)) return resolve(null);
-    navigator.geolocation.getCurrentPosition(
-      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
-      _=>resolve(null),
-      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
-    );
-  });
-}
-
-// ================== REQUIRE GPS BEFORE CAMERA ==================
-async function ensureGeoPermission(){
-  // trả về true nếu geolocation đã sẵn sàng để xin GPS
-  try{
-    if (navigator.permissions?.query){
-      const p = await navigator.permissions.query({ name:'geolocation' });
-      if (p.state === 'denied'){
-        toast('⚠️ Bạn đang tắt quyền Vị trí. Hãy bật lại trong Site Settings.', 'err', 4200);
-        alert('Bạn đang tắt quyền Vị trí cho trang này.\nHãy vào Cài đặt trình duyệt (Site settings) → Location → Allow.');
-        return false;
-      }
-      // 'prompt' hoặc 'granted' đều có thể tiếp tục xin GPS
-    }
-  }catch(_){}
-  return true;
-}
-
-async function requireGPSBeforeCamera(){
-  const okPerm = await ensureGeoPermission();
-  if (!okPerm) return null;
-
-  toast('📍 Đang lấy vị trí GPS...', 'info', 2000);
-
-  // xin GPS thật sự (để trình duyệt hiện prompt nếu cần)
-  const gps = await getGPSOnce();
-
-  // Chặn nếu chưa có / lat = 0 / lng = 0
-  const lat = Number(gps?.lat || 0);
-  const lng = Number(gps?.lng || 0);
-
-  if (!lat || !lng){
-    toast('⚠️ Chưa có vị trí. Hãy bật GPS/Location rồi thử lại.', 'err', 3500);
-    alert('Chưa có vị trí (GPS).\n- Bật Location/GPS\n- Cho phép quyền vị trí cho trang\n- Ra chỗ thoáng rồi bấm lại');
-    return null;
-  }
-
-  // nếu muốn “chặt” hơn: yêu cầu độ chính xác <= 80m
-  const acc = Number(gps?.acc ?? 9999);
-  if (acc > 120){
-    toast(`⚠️ GPS yếu (±${Math.round(acc)}m). Di chuyển ra chỗ thoáng rồi thử lại.`, 'err', 3500);
-    // vẫn trả về gps để bạn quyết định có cho mở cam hay không:
-    return null; // nếu bạn muốn GPS yếu cũng CHẶN mở cam
-  }
-
-  return { lat, lng, acc };
-}
-
 /* ================== EVENTS ================== */
-btnStart && (btnStart.onclick = async ()=>{
-  const gps = await requireGPSBeforeCamera();
-  if (!gps) return;              // CHƯA CÓ GPS → THOÁT
-  await startCam();              // CÓ GPS → MỚI MỞ CAM
-});
+btnStart && (btnStart.onclick = startCam);
 
 let shooting = false;
 btnShot && (btnShot.onclick = async ()=>{
@@ -494,12 +516,20 @@ btnShot && (btnShot.onclick = async ()=>{
     await playShutter();
     drawToCanvas();
 
+    // ✅ Trước khi chụp/đi tiếp: BẮT BUỘC GPS hợp lệ (lat != 0)
+    const gps = await getGPSOnce();
+    const lat = gps?.lat ?? 0;
+    const lng = gps?.lng ?? 0;
+
+    if (!lat || lat === 0 || !lng || lng === 0){
+      toast('⚠️ Chưa có vị trí. Hãy bật GPS rồi chụp lại.', 'err', 3500);
+      try{ alert('⚠️ Chưa có vị trí. Hãy bật GPS/vị trí rồi chụp lại.'); }catch{}
+      return; // THOÁT, KHÔNG ĐI TIẾP
+    }
+
     const mime = 'image/jpeg';
     const dataUrl = canvas.toDataURL(mime, 0.85);
-    const gps = await getGPSOnce();
 
-    const lat = gps?.lat ?? '';
-    const lng = gps?.lng ?? '';
     const payload = {
       image_mime: mime,
       image_b64: (dataUrl.split(',')[1] || ''),
@@ -510,11 +540,11 @@ btnShot && (btnShot.onclick = async ()=>{
     sessionStorage.setItem(SESSION_IMG_KEY, JSON.stringify(payload));
 
     const targetUrl = new URL('/checkin_khach_hang.html', location.origin);
-    if (lat !== '') targetUrl.searchParams.set('lat', String(lat));
-    if (lng !== '') targetUrl.searchParams.set('lng', String(lng));
-    if (lat !== '') targetUrl.searchParams.set('lag', String(lat));
-    if (MA_KH)      targetUrl.searchParams.set('ma_kh', MA_KH);
-    if (MA_HD)      targetUrl.searchParams.set('ma_hd', MA_HD);
+    targetUrl.searchParams.set('lat', String(lat));
+    targetUrl.searchParams.set('lng', String(lng));
+    targetUrl.searchParams.set('lag', String(lat)); // giữ nguyên theo bạn
+    if (MA_KH) targetUrl.searchParams.set('ma_kh', MA_KH);
+    if (MA_HD) targetUrl.searchParams.set('ma_hd', MA_HD);
     targetUrl.searchParams.set('img', 'session');
 
     location.assign(targetUrl.toString());
@@ -539,9 +569,11 @@ function showStage(){
 }
 
 /** 
- * Chỉ auto bật cam nếu đã được cấp quyền từ lần trước (state = 'granted').
- * Nếu chưa được cấp / bị hỏi lại → không auto, chỉ hiện UI + toast 
- * để người dùng tự bấm nút "Bật camera".
+ * Auto bật cam CHỈ khi:
+ * - camera granted
+ * - geolocation granted
+ * - và lấy được GPS thật (lat != 0)
+ * Nếu không thì chỉ hiện UI + hướng dẫn bấm "Bật camera".
  */
 (async () => {
   try {
@@ -552,24 +584,24 @@ function showStage(){
         geoPerm = await navigator.permissions.query({ name: 'geolocation' });
       } catch (_) {}
 
-        if (camPerm.state === 'granted') {
-          const gps = await requireGPSBeforeCamera();
-          if (gps) {
-            await startCam();
-          } else {
-            showStage();
-            if (btnShot) btnShot.disabled = true;
-            toast('Hãy bật GPS trước, rồi bấm "Bật camera".', 'info', 3000);
-          }
+      const camGranted = camPerm.state === 'granted';
+      const geoGranted = geoPerm ? (geoPerm.state === 'granted') : false;
+
+      if (camGranted && geoGranted) {
+        // thử lấy GPS nhanh, nếu ok thì auto bật cam
+        const g = await getGPSOnce();
+        const ok = !!(g && !g.err && g.lat && g.lng && g.lat !== 0 && g.lng !== 0);
+        if (ok) {
+          await startCam();
         } else {
           showStage();
           if (btnShot) btnShot.disabled = true;
-          toast('Bấm nút "Bật camera" để mở cam.', 'info', 3000);
+          toast('Bật vị trí (GPS) rồi bấm "Bật camera".', 'info', 3000);
         }
-
-      // GPS: chỉ pre-warm nếu đã granted
-      if (geoPerm && geoPerm.state === 'granted') {
-        navigator.geolocation.getCurrentPosition(()=>{},()=>{});
+      } else {
+        showStage();
+        if (btnShot) btnShot.disabled = true;
+        toast('Bấm nút "Bật camera" để mở cam (sẽ yêu cầu GPS trước).', 'info', 3200);
       }
 
       // Nếu trạng thái quyền camera thay đổi trong lúc đang mở trang
@@ -579,10 +611,9 @@ function showStage(){
         }
       };
     } else {
-      // Không hỗ trợ Permissions API → vẫn phải hiện UI cho user bấm
       showStage();
       if (btnShot) btnShot.disabled = true;
-      toast('Bấm nút "Bật camera" để mở cam.', 'info', 3000);
+      toast('Bấm nút "Bật camera" để mở cam (sẽ yêu cầu GPS trước).', 'info', 3200);
     }
   } catch (e) {
     console.warn('Auto boot error', e);
@@ -600,7 +631,7 @@ document.addEventListener('visibilitychange', () => {
     showStage();
     if (!stream) {
       if (btnShot) btnShot.disabled = true;
-      toast('Bấm nút "Bật camera" để mở lại cam.', 'info', 2500);
+      toast('Bấm nút "Bật camera" để mở lại cam (sẽ yêu cầu GPS trước).', 'info', 2600);
     }
   }
 });
