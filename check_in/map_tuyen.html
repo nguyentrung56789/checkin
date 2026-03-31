@@ -152,7 +152,31 @@
   }).addTo(map);
 
   // ================== LẤY KH ==================
-  const { data } = await supabase.from("nv_checkin_khach_hang").select("*");
+  async function fetchAllRows() {
+  const pageSize = 1000;
+  let from = 0;
+  let allRows = [];
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("nv_checkin_khach_hang")
+      .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,Da_mua_hang")
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    allRows = allRows.concat(data);
+
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
+const data = await fetchAllRows();
+console.log("Tổng rows lấy được:", data.length);
 
   let points = [];
   let markers = [];
