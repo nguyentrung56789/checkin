@@ -407,26 +407,25 @@ async function loadCheckedToday(){
   const ma_nv = getCurrentNVID();
   if (!ma_nv) return false;
 
-  const todayPrefix = getTodayPrefix_ddMMyyyy(); // vd: 02/04/2026
+  const todayPrefix = getTodayPrefix_ddMMyyyy();
 
-  try {
+  try{
     const { data, error } = await SB
-      .from('nv_checkin')
-      .select('ma_nv, ngay')
+      .from(CHECKIN_TABLE)
+      .select('*')
       .eq('ma_nv', ma_nv)
-      .like('ngay', todayPrefix + '%')
-      .limit(1);
+      .limit(5);
 
-    if (error) {
+    if (error){
       console.warn('Lỗi đọc nv_checkin:', error);
       CHECKED_TODAY = false;
       return false;
     }
 
     CHECKED_TODAY = Array.isArray(data) && data.length > 0;
-    console.log('CHECKED_TODAY =', CHECKED_TODAY, data);
+    console.log('DEBUG nv_checkin:', data);
     return CHECKED_TODAY;
-  } catch (err) {
+  }catch(err){
     console.error('Exception đọc nv_checkin:', err);
     CHECKED_TODAY = false;
     return false;
