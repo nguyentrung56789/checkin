@@ -407,27 +407,27 @@ async function loadCheckedToday(){
   const ma_nv = getCurrentNVID();
   if (!ma_nv) return false;
 
-  const todayPrefix = getTodayPrefix_ddMMyyyy(); // dd/MM/yyyy
+  const todayPrefix = getTodayPrefix_ddMMyyyy(); // vd: 02/04/2026
 
-  try{
+  try {
     const { data, error } = await SB
-      .from(CHECKIN_TABLE)
-      .select(`ma_nv, ${CHECKIN_DATE_COL}`)
+      .from('nv_checkin')
+      .select('ma_nv, ngay')
       .eq('ma_nv', ma_nv)
-      .like(CHECKIN_DATE_COL, todayPrefix + '%')
+      .like('ngay', todayPrefix + '%')
       .limit(1);
 
-    if (error){
-      console.warn('nv_checkin bị chặn quyền/RLS, bỏ qua kiểm tra hôm nay:', error.message || error);
+    if (error) {
+      console.warn('Lỗi đọc nv_checkin:', error);
       CHECKED_TODAY = false;
       return false;
     }
 
     CHECKED_TODAY = Array.isArray(data) && data.length > 0;
-    console.log('CHECKED_TODAY?', CHECKED_TODAY);
+    console.log('CHECKED_TODAY =', CHECKED_TODAY, data);
     return CHECKED_TODAY;
-  }catch(err){
-    console.warn('Lỗi đọc nv_checkin, bỏ qua để không ảnh hưởng web/webhook:', err);
+  } catch (err) {
+    console.error('Exception đọc nv_checkin:', err);
     CHECKED_TODAY = false;
     return false;
   }
