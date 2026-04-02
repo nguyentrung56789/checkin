@@ -418,7 +418,7 @@ async function loadCheckedToday(){
       .limit(1);
 
     if (error){
-      console.warn('Bỏ qua nv_checkin vì lỗi/RLS:', error.message || error);
+      console.warn('nv_checkin bị chặn quyền/RLS, bỏ qua kiểm tra hôm nay:', error.message || error);
       CHECKED_TODAY = false;
       return false;
     }
@@ -427,7 +427,7 @@ async function loadCheckedToday(){
     console.log('CHECKED_TODAY?', CHECKED_TODAY);
     return CHECKED_TODAY;
   }catch(err){
-    console.warn('Bỏ qua nv_checkin vì exception:', err);
+    console.warn('Lỗi đọc nv_checkin, bỏ qua để không ảnh hưởng web/webhook:', err);
     CHECKED_TODAY = false;
     return false;
   }
