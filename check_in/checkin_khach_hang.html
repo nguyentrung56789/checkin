@@ -405,19 +405,11 @@ async function loadCheckedToday(){
   CHECKED_TODAY = false;
 
   const ma_nv = getCurrentNVID();
-  alert('[1] ma_nv = ' + String(ma_nv || ''));
-
-  if (!ma_nv){
-    alert('[2] Không có ma_nv nên không chạy select nv_checkin');
-    return false;
-  }
+  if (!ma_nv) return false;
 
   const todayPrefix = getTodayPrefix_ddMMyyyy();
-  alert('[3] todayPrefix = ' + todayPrefix);
 
   try{
-    alert('[4] Chuẩn bị select từ bảng: ' + CHECKIN_TABLE);
-
     const { data, error } = await SB
       .from(CHECKIN_TABLE)
       .select(`ma_nv, ${CHECKIN_DATE_COL}`)
@@ -425,24 +417,19 @@ async function loadCheckedToday(){
       .like(CHECKIN_DATE_COL, todayPrefix + '%')
       .limit(1);
 
-    alert(
-      '[5] Select xong' +
-      '\nerror = ' + (error ? (error.message || JSON.stringify(error)) : 'null') +
-      '\ndata = ' + JSON.stringify(data)
-    );
-
     if (error){
-      alert('[6] Lỗi select nv_checkin: ' + (error.message || JSON.stringify(error)));
+      console.warn('nv_checkin bị chặn quyền/RLS:', error.message || error);
       CHECKED_TODAY = false;
       return false;
     }
 
-    CHECKED_TODAY = Array.isArray(data) && data.length > 0;
-    alert('[7] CHECKED_TODAY = ' + CHECKED_TODAY);
+    const HAS_CHECKIN_TODAY = Array.isArray(data) && data.length > 0;
+    console.log('HAS_CHECKIN_TODAY =', HAS_CHECKIN_TODAY, data);
 
-    return CHECKED_TODAY;
+    CHECKED_TODAY = false; // không khóa nút Thêm
+    return HAS_CHECKIN_TODAY;
   }catch(err){
-    alert('[8] Exception loadCheckedToday: ' + String(err?.message || err));
+    console.warn('Lỗi đọc nv_checkin:', err);
     CHECKED_TODAY = false;
     return false;
   }
