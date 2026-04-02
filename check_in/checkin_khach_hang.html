@@ -401,28 +401,37 @@ async function getSupabaseLib(){
   }
 
   // ==== Kiểm tra xem NV hiện tại đã checkin hôm nay chưa ====
-  async function loadCheckedToday(){
-    CHECKED_TODAY = false;
+async function loadCheckedToday(){
+  CHECKED_TODAY = false;
 
-    const ma_nv = getCurrentNVID();
-    if (!ma_nv) return;
+  const ma_nv = getCurrentNVID();
+  if (!ma_nv) return false;
 
-    const todayPrefix = getTodayPrefix_ddMMyyyy(); // dd/MM/yyyy
+  const todayPrefix = getTodayPrefix_ddMMyyyy(); // dd/MM/yyyy
 
+  try{
     const { data, error } = await SB
       .from(CHECKIN_TABLE)
       .select(`ma_nv, ${CHECKIN_DATE_COL}`)
       .eq('ma_nv', ma_nv)
-      .like(CHECKIN_DATE_COL, todayPrefix + '%');
+      .like(CHECKIN_DATE_COL, todayPrefix + '%')
+      .limit(1);
 
-    if (!error && Array.isArray(data) && data.length > 0){
-      CHECKED_TODAY = true;
-    }else{
+    if (error){
+      console.warn('Bỏ qua nv_checkin vì lỗi/RLS:', error.message || error);
       CHECKED_TODAY = false;
+      return false;
     }
 
+    CHECKED_TODAY = Array.isArray(data) && data.length > 0;
     console.log('CHECKED_TODAY?', CHECKED_TODAY);
+    return CHECKED_TODAY;
+  }catch(err){
+    console.warn('Bỏ qua nv_checkin vì exception:', err);
+    CHECKED_TODAY = false;
+    return false;
   }
+}
 
   // ===== Webhook URL (gắn cứng) =====
   function getWebhookURL(){
