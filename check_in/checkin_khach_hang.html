@@ -55,7 +55,6 @@
     .btn-ok{background:var(--ok);color:#02220f}
     .btn-warn{background:var(--warn)}
 
-    /* Nút bị khóa (sau khi đã checkin hôm nay) */
     .btn-disabled{
       background:#4b5563 !important;
       color:#cbd5f5 !important;
@@ -94,7 +93,6 @@
     tbody tr:hover{background:#0f1930}
     .col-actions{white-space:nowrap}
 
-    /* NÚT MÃ KH: xanh lá, dễ bấm */
     .ma-kh-btn{
       border:0;
       border-radius:999px;
@@ -113,7 +111,6 @@
       transform:translateY(1px) scale(.97);
       box-shadow:0 2px 6px rgba(0,0,0,.55);
     }
-    /* Nút mã KH đã checkin hôm nay */
     .ma-kh-btn.ma-kh-disabled{
       background:#4b5563;
       color:#cbd5f5;
@@ -149,7 +146,6 @@
     .grid .span2{grid-column:1 / span 2}
     .row{display:flex;gap:8px;align-items:center}
 
-    /* TOAST: hiển thị giữa màn hình */
     .toast{
       position:fixed;
       left:50%;
@@ -168,7 +164,6 @@
     }
   </style>
 
-  <!-- /js/internal_key.js cần có getConfig('url'|'anon') và (tuỳ) getInternalKey() -->
   <script src="/js/internal_key.js"></script>
 </head>
 <body>
@@ -178,7 +173,6 @@
     <div class="bar-left">
       <button id="btnAdd" class="btn btn-primary">+ Thêm</button>
 
-      <!-- Dropdown chọn bán kính (m) -->
       <label class="row" style="gap:6px">
         <span class="muted">Bán kính</span>
         <select id="radiusSelect" class="input">
@@ -190,7 +184,6 @@
       </label>
     </div>
 
-    <!-- Nút mở app_checkin -->
     <button id="btnOpenCheckin" class="btn btn-ok">
       📷 Checkin
     </button>
@@ -201,7 +194,6 @@
       <tr>
         <th style="width:160px">Mã KH</th>
         <th>Tên KH</th>
-        <!-- ĐÃ BỎ: cột Địa chỉ -->
         <th style="width:160px">Điện thoại</th>
         <th class="col-actions" style="width:120px">Thao tác</th>
       </tr>
@@ -214,13 +206,11 @@
   <div id="countInfo" class="muted" style="margin-top:8px"></div>
 </div>
 
-<!-- Modal thêm/sửa -->
 <div class="modal-wrap" id="modalWrap">
   <div class="modal">
     <h3 id="modalTitle">Thêm khách hàng</h3>
     <div class="grid">
       <label class="span2" id="maKhRow">Mã KH (khóa):
-        <!-- readonly: nhìn được khi SỬA nhưng không được gõ -->
         <input id="f_ma_kh" class="input" readonly>
       </label>
 
@@ -239,7 +229,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ==== Tải supabase-js nếu chưa có ==== */
 async function getSupabaseLib(){
   if (window.supabase?.createClient) return window.supabase;
   const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
@@ -262,7 +251,6 @@ async function getSupabaseLib(){
     toast._t = setTimeout(()=>el.style.display='none',2200);
   };
 
-  // helper escape attribute (cho data-*)
   function escAttr(v){
     return String(v ?? '')
       .replace(/&/g,'&amp;')
@@ -271,17 +259,14 @@ async function getSupabaseLib(){
   }
 
   const TABLE           = 'nv_checkin_khach_hang';
-  const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD'; // Ảnh lưu từ trang camera
-
-  // Bảng log checkin
+  const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
   const CHECKIN_TABLE    = 'nv_checkin';
-  const CHECKIN_DATE_COL = 'ngay'; // text dạng dd/MM/yyyy hh:mm
+  const CHECKIN_DATE_COL = 'ngay';
 
   let SB            = null;
   let CURRENT       = null;
-  let CHECKED_TODAY = false; // true = NV này đã checkin hôm nay (khóa)
+  let CHECKED_TODAY = false;
 
-  // ===== Helpers chung =====
   function getLatLngFromURL(){
     const qp = new URLSearchParams(location.search);
     const latRaw = qp.get('lat') ?? qp.get('latitude');
@@ -294,10 +279,10 @@ async function getSupabaseLib(){
   function initRadiusFromURLOrDefault(){
     const sel = $('#radiusSelect');
     const qp = new URLSearchParams(location.search);
-    let r = Number(qp.get('radius'));        // mét
-    const rkm = Number(qp.get('radius_km')); // km
+    let r = Number(qp.get('radius'));
+    const rkm = Number(qp.get('radius_km'));
     if (Number.isFinite(rkm) && rkm > 0) r = rkm * 1000;
-    if (!Number.isFinite(r) || r <= 0) r = 50; // mặc định 50m
+    if (!Number.isFinite(r) || r <= 0) r = 50;
     if ([20,50,100,500].includes(Math.round(r))){
       sel.value = String(Math.round(r));
     } else {
@@ -352,13 +337,12 @@ async function getSupabaseLib(){
       if (!raw) return null;
       const p = JSON.parse(raw);
       if (p && typeof p.image_b64 === 'string' && p.image_b64.length > 0){
-        return p; // { image_mime, image_b64, ma_kh?, ma_hd? }
+        return p;
       }
     }catch{}
     return null;
   }
 
-  // fallback cho CSS.escape
   function cssEscapeSafe(v){
     try{
       return CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g,'\\"');
@@ -367,7 +351,6 @@ async function getSupabaseLib(){
     }
   }
 
-  // ==== Hỗ trợ ngày hôm nay (dd/MM/yyyy) ====
   function getTodayPrefix_ddMMyyyy(){
     const d = new Date();
     const dd = String(d.getDate()).padStart(2,'0');
@@ -376,7 +359,19 @@ async function getSupabaseLib(){
     return `${dd}/${mm}/${yyyy}`;
   }
 
-  // ===== Khóa / mở khóa nút theo CHECKED_TODAY =====
+  function isSameTodayFromText(v){
+    const s = String(v || '').trim();
+    if (!s) return false;
+    return s.startsWith(getTodayPrefix_ddMMyyyy());
+  }
+
+  function filterHiddenTodayRows(rows){
+    const all = Array.isArray(rows) ? rows : [];
+    const hidden = all.filter(r => isSameTodayFromText(r.ngay_cuoi_cung_checkin));
+    const visible = all.filter(r => !isSameTodayFromText(r.ngay_cuoi_cung_checkin));
+    return { visible, hiddenCount: hidden.length };
+  }
+
   function applyCheckedTodayLock(){
     const btnAdd = $('#btnAdd');
     if (btnAdd){
@@ -400,47 +395,44 @@ async function getSupabaseLib(){
     });
   }
 
-  // ==== Kiểm tra xem NV hiện tại đã checkin hôm nay chưa ====
-async function loadCheckedToday(){
-  CHECKED_TODAY = false;
+  async function loadCheckedToday(){
+    CHECKED_TODAY = false;
 
-  const ma_nv = getCurrentNVID();
-  if (!ma_nv) return false;
+    const ma_nv = getCurrentNVID();
+    if (!ma_nv) return false;
 
-  const todayPrefix = getTodayPrefix_ddMMyyyy();
+    const todayPrefix = getTodayPrefix_ddMMyyyy();
 
-  try{
-    const { data, error } = await SB
-      .from(CHECKIN_TABLE)
-      .select(`ma_nv, ${CHECKIN_DATE_COL}`)
-      .eq('ma_nv', ma_nv)
-      .like(CHECKIN_DATE_COL, todayPrefix + '%')
-      .limit(1);
+    try{
+      const { data, error } = await SB
+        .from(CHECKIN_TABLE)
+        .select(`ma_nv, ${CHECKIN_DATE_COL}`)
+        .eq('ma_nv', ma_nv)
+        .like(CHECKIN_DATE_COL, todayPrefix + '%')
+        .limit(1);
 
-    if (error){
-      console.warn('nv_checkin bị chặn quyền/RLS:', error.message || error);
+      if (error){
+        console.warn('nv_checkin bị chặn quyền/RLS:', error.message || error);
+        CHECKED_TODAY = false;
+        return false;
+      }
+
+      const HAS_CHECKIN_TODAY = Array.isArray(data) && data.length > 0;
+      console.log('HAS_CHECKIN_TODAY =', HAS_CHECKIN_TODAY, data);
+
+      CHECKED_TODAY = false;
+      return HAS_CHECKIN_TODAY;
+    }catch(err){
+      console.warn('Lỗi đọc nv_checkin:', err);
       CHECKED_TODAY = false;
       return false;
     }
-
-    const HAS_CHECKIN_TODAY = Array.isArray(data) && data.length > 0;
-    console.log('HAS_CHECKIN_TODAY =', HAS_CHECKIN_TODAY, data);
-
-    CHECKED_TODAY = false; // không khóa nút Thêm
-    return HAS_CHECKIN_TODAY;
-  }catch(err){
-    console.warn('Lỗi đọc nv_checkin:', err);
-    CHECKED_TODAY = false;
-    return false;
   }
-}
 
-  // ===== Webhook URL (gắn cứng) =====
   function getWebhookURL(){
     return 'https://dhsybbqoe.datadex.vn/webhook/hoadon';
   }
 
-  // ===== Gửi webhook: POST JSON trước, nếu 405 thì fallback GET =====
   async function postWebhook(payload){
     const url = getWebhookURL();
     const headers = { 'content-type':'application/json' };
@@ -468,7 +460,6 @@ async function loadCheckedToday(){
     }
   }
 
-  // ===== Modal =====
   function openModal(mode,row=null){
     CURRENT = { mode };
     $('#modalTitle').textContent = mode==='add' ? 'Thêm khách hàng' : 'Sửa khách hàng';
@@ -490,7 +481,6 @@ async function loadCheckedToday(){
 
   const closeModal = () => $('#modalWrap').style.display='none';
 
-  // ===== Supabase client =====
   async function makeClient(){
     const url  = getConfig('url');
     const anon = getConfig('anon');
@@ -498,12 +488,12 @@ async function loadCheckedToday(){
     return lib.createClient(url,anon,{auth:{persistSession:false}});
   }
 
-  // ===== List & render (không theo bán kính) =====
   async function loadData(){
     $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
-    const { data, error, count } = await SB
+
+    const { data, error } = await SB
       .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,dien_thoai',{count:'exact'})
+      .select('ma_kh,ten_kh,dia_chi,dien_thoai,ngay_cuoi_cung_checkin')
       .order('ten_kh',{ascending:true})
       .limit(500);
 
@@ -513,8 +503,17 @@ async function loadCheckedToday(){
         `<tr><td colspan="4" class="muted">Lỗi Supabase: ${error.message}</td></tr>`;
       return;
     }
-    $('#countInfo').textContent = `${count ?? (data?.length || 0)} dòng`;
-    renderRows(data || []);
+
+    const { visible, hiddenCount } = filterHiddenTodayRows(data || []);
+
+    $('#countInfo').textContent =
+      `${visible.length} dòng` + (hiddenCount ? ` • Ẩn ${hiddenCount} KH đã check-in hôm nay` : '');
+
+    renderRows(visible);
+
+    if (hiddenCount > 0){
+      toast(`Đã ẩn ${hiddenCount} khách có ngày_cuoi_cung_checkin là hôm nay`, 'ok');
+    }
   }
 
   function renderRows(rows){
@@ -525,11 +524,12 @@ async function loadCheckedToday(){
       const html = rows.map(r => {
         const disabled = CHECKED_TODAY === true;
         const btnHtml = disabled
-          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="Nhân viên đã checkin hôm nay">${r.ma_kh}</button>`
-          : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>`;
+          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="Nhân viên đã checkin hôm nay">${escAttr(r.ma_kh)}</button>`
+          : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${escAttr(r.ma_kh)}</button>`;
         return `
       <tr data-id="${escAttr(r.ma_kh)}"
           data-ten_kh="${escAttr(r.ten_kh||'')}"
+          data-dia_chi="${escAttr(r.dia_chi||'')}"
           data-dien_thoai="${escAttr(r.dien_thoai||'')}">
 
         <td class="col-ma">
@@ -549,12 +549,10 @@ async function loadCheckedToday(){
     $$('#tbody .btn-edit').forEach(b =>
       b.addEventListener('click', onEditClick)
     );
-    // chỉ gắn click cho nút chưa bị khóa
     $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
       b.addEventListener('click', () => onMaKHClick(b.dataset.id))
     );
 
-    // áp dụng trạng thái khóa cho nút Thêm + Sửa
     applyCheckedTodayLock();
   }
 
@@ -570,7 +568,6 @@ async function loadCheckedToday(){
     openModal('edit', row);
   }
 
-  // ===== Click Mã KH → gửi webhook (kèm ảnh base64 nếu có) =====
   async function onMaKHClick(ma_kh){
     const coords = getLatLngFromURL();
     if (!coords){
@@ -595,10 +592,11 @@ async function loadCheckedToday(){
     try{
       const res = await postWebhook(payload);
       if (res.ok){
-        // Sau khi checkin thành công: khóa toàn bộ
         CHECKED_TODAY = true;
 
-        // khóa nút mã KH
+        const tr = document.querySelector(`tr[data-id="${cssEscapeSafe(ma_kh)}"]`);
+        if (tr) tr.remove();
+
         $$('.ma-kh-btn').forEach(btn=>{
           btn.classList.add('ma-kh-disabled');
           btn.disabled = true;
@@ -606,8 +604,13 @@ async function loadCheckedToday(){
           btn.title = 'Nhân viên đã checkin hôm nay';
         });
 
-        // khóa nút Thêm + Sửa
         applyCheckedTodayLock();
+
+        const rowCount = $$('#tbody tr[data-id]').length;
+        const oldText = $('#countInfo').textContent || '';
+        const hiddenMatch = oldText.match(/Ẩn\s+(\d+)\s+KH/i);
+        const hiddenText = hiddenMatch ? ` • Ẩn ${hiddenMatch[1]} KH đã check-in hôm nay` : '';
+        $('#countInfo').textContent = `${rowCount} dòng${hiddenText}`;
 
         toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
       } else {
@@ -619,7 +622,6 @@ async function loadCheckedToday(){
     }
   }
 
-  // ===== TỰ SINH MÃ KH: yymmddhhmm =====
   function generateMaKH(){
     const d = new Date();
     const yy = String(d.getFullYear()).slice(-2);
@@ -627,12 +629,10 @@ async function loadCheckedToday(){
     const dd = String(d.getDate()).padStart(2,'0');
     const hh = String(d.getHours()).padStart(2,'0');
     const mm = String(d.getMinutes()).padStart(2,'0');
-    const ss = String(d.getSeconds()).padStart(2,'0'); // thêm dòng này
-
-    return yy + MM + dd + hh + mm + ss; // thêm ss vào đây
+    const ss = String(d.getSeconds()).padStart(2,'0');
+    return yy + MM + dd + hh + mm + ss;
   }
 
-  // ===== KIỂM TRA MÃ KH TRÙNG =====
   async function checkMaKHExists(ma_kh){
     const { data, error } = await SB
       .from(TABLE)
@@ -646,29 +646,24 @@ async function loadCheckedToday(){
     return Array.isArray(data) && data.length > 0;
   }
 
-  // ===== Lưu: tự lấy lat/lng từ URL và lọc lại theo bán kính =====
   async function saveForm(){
     let ma_kh      = $('#f_ma_kh').value.trim();
     const ten_kh     = $('#f_ten_kh').value.trim();
     const dia_chi    = $('#f_dia_chi').value.trim();
     const dien_thoai = $('#f_dien_thoai').value.trim();
 
-    // ADD: nếu đang thêm mới
     if (CURRENT?.mode === 'add'){
-      // nếu trống -> tự sinh
       if (!ma_kh){
         ma_kh = generateMaKH();
         $('#f_ma_kh').value = ma_kh;
         toast(`Tự sinh mã KH: ${ma_kh}`,'ok');
       }
-      // kiểm tra trùng
       const exists = await checkMaKHExists(ma_kh);
       if (exists){
-        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,`err`);
+        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,'err');
         return;
       }
     } else {
-      // EDIT: mã KH đang disabled nên không đổi, nhưng nếu vì lý do gì đó trống thì chặn
       if (!ma_kh){
         toast('Mã KH không được trống','err');
         return;
@@ -710,7 +705,6 @@ async function loadCheckedToday(){
     }
   }
 
-  // ===== Nearby runner (lọc theo lat/lng + radius) =====
   async function runNearby(lat, lng, radius){
     const $tbody = $('#tbody');
     $tbody.innerHTML =
@@ -725,7 +719,7 @@ async function loadCheckedToday(){
 
     const { data, error } = await SB
       .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng', { count:'exact' })
+      .select('ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng,ngay_cuoi_cung_checkin', { count:'exact' })
       .not('lat','is',null).not('lng','is',null)
       .gte('lat', minLat).lte('lat', maxLat)
       .gte('lng', minLng).lte('lng', maxLng)
@@ -740,7 +734,9 @@ async function loadCheckedToday(){
       return;
     }
 
-    const rows = (Array.isArray(data)?data:[])
+    const { visible, hiddenCount } = filterHiddenTodayRows(data || []);
+
+    const rows = visible
       .map(r=>({ ...r, rlat:Number(r.lat), rlng:Number(r.lng) }))
       .filter(r=>Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
 
@@ -759,9 +755,14 @@ async function loadCheckedToday(){
       $('#tbody').innerHTML =
         `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
       $('#countInfo').textContent =
-        `0 dòng (lọc ${Math.round(radius)}m)`;
+        `0 dòng (lọc ${Math.round(radius)}m)` + (hiddenCount ? ` • Ẩn ${hiddenCount} KH đã check-in hôm nay` : '');
+      return;
     } else {
-      toast(`Tìm thấy ${nearby.length} KH trong ${(Math.round(radius/100)/10)} km`, 'ok');
+      toast(
+        `Tìm thấy ${nearby.length} KH` + (hiddenCount ? ` • Đã ẩn ${hiddenCount} KH đã check-in hôm nay` : ''),
+        'ok'
+      );
+
       const html = nearby.map(r=>{
         const disabled = CHECKED_TODAY === true;
         const btnHtml = disabled
@@ -770,6 +771,7 @@ async function loadCheckedToday(){
         return `
         <tr data-id="${escAttr(r.ma_kh)}"
             data-ten_kh="${escAttr(r.ten_kh||'')}"
+            data-dia_chi="${escAttr(r.dia_chi||'')}"
             data-dien_thoai="${escAttr(r.dien_thoai||'')}">
 
           <td class="col-ma">
@@ -788,7 +790,7 @@ async function loadCheckedToday(){
 
       $('#tbody').innerHTML = html;
       $('#countInfo').textContent =
-        `${nearby.length} dòng (lọc ${Math.round(radius)}m)`;
+        `${nearby.length} dòng (lọc ${Math.round(radius)}m)` + (hiddenCount ? ` • Ẩn ${hiddenCount} KH đã check-in hôm nay` : '');
 
       $$('#tbody .btn-edit').forEach(b =>
         b.addEventListener('click', onEditClick)
@@ -797,17 +799,14 @@ async function loadCheckedToday(){
         b.addEventListener('click', () => onMaKHClick(b.dataset.id))
       );
 
-      // áp dụng trạng thái khóa
       applyCheckedTodayLock();
     }
   }
 
-  // ===== events =====
   $('#btnAdd').addEventListener('click',()=>openModal('add'));
   $('#btnCancel').addEventListener('click',closeModal);
   $('#btnSave').addEventListener('click',saveForm);
 
-  // Nút mở app_checkin.html
   const btnOpenCheckin = $('#btnOpenCheckin');
   if (btnOpenCheckin){
     btnOpenCheckin.addEventListener('click', ()=>{
@@ -815,7 +814,6 @@ async function loadCheckedToday(){
     });
   }
 
-  // Đổi bán kính → lọc lại
   $('#radiusSelect').addEventListener('change',()=>{
     const coords = getLatLngFromURL();
     const r = getRadiusFromUI();
@@ -823,16 +821,11 @@ async function loadCheckedToday(){
     else toast('Thiếu toạ độ lat/lng trong URL để lọc theo bán kính', 'err');
   });
 
-  // ======================= init =======================
   try{
     SB = await makeClient();
 
-    // Kiểm tra: NV hiện tại đã checkin hôm nay chưa?
     await loadCheckedToday();
-
-    // áp dụng khóa cho nút Thêm (trước khi render bảng)
     applyCheckedTodayLock();
-
     initRadiusFromURLOrDefault();
 
     const coords = getLatLngFromURL();
