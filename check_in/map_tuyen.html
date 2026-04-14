@@ -27,12 +27,10 @@
       height:100%;
     }
 
-    /* Bỏ nút + - */
     .leaflet-control-zoom{
       display:none !important;
     }
 
-    /* Thanh điều khiển */
     .top-controls{
       position:fixed;
       top:10px;
@@ -59,7 +57,6 @@
       background:white;
     }
 
-    /* Nút GPS */
     #gpsBtn{
       width:40px;
       height:40px;
@@ -72,52 +69,44 @@
       box-shadow:0 4px 10px rgba(0,0,0,0.3);
       font-size:20px;
       cursor:pointer;
+      flex:0 0 40px;
     }
 
-    /* Marker màu đỏ */
-    .mk-red{
-      background:#ef4444;
+    .mk-red,
+    .mk-orange,
+    .mk-purple{
       color:white;
-      width:26px;height:26px;
+      width:26px;
+      height:26px;
       border-radius:50%;
       display:flex;
       align-items:center;
       justify-content:center;
       border:2px solid white;
       font-weight:600;
+      font-size:12px;
       box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
     }
 
-    /* Marker màu xanh */
-    .mk-green{
-      background:#22c55e;
-      color:white;
-      width:26px;height:26px;
-      border-radius:50%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border:2px solid white;
-      font-weight:600;
-      box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
-    }
-
+    .mk-red{ background:#ef4444; }
+    .mk-orange{ background:#f59e0b; }
+    .mk-purple{ background:#8b5cf6; }
   </style>
 </head>
 
 <body>
 
-<!-- ====== THANH LỌC ====== -->
 <div class="top-controls">
-
-  <!-- HÀNG 1: GPS + LỌC MÀU + LỌC NHÂN VIÊN -->
   <div class="row">
     <button id="gpsBtn">📍</button>
 
-    <select id="colorFilter">
+    <select id="levelFilter">
       <option value="">Tất cả</option>
-      <option value="green">Xanh (có mua)</option>
-      <option value="red">Đỏ (chưa mua)</option>
+      <option value="1">1 màu đỏ check in về (chưa có số đt)</option>
+      <option value="2">2 màu cam (đã check in có đt)</option>
+      <option value="3">3 màu tím (nv đã checkin ở tháng này)</option>
+      <option value="buy">Khách đã mua hàng</option>
+      <option value="nobuy">Khách chưa mua hàng</option>
     </select>
 
     <select id="nvFilter">
@@ -125,9 +114,7 @@
     </select>
   </div>
 
-  <!-- HÀNG 2: Ô TÌM KIẾM -->
   <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
-
 </div>
 
 <div id="map"></div>
@@ -135,7 +122,6 @@
 <script>
 (async function(){
 
-  // ================== KẾT NỐI SUPABASE ==================
   const supabase = window.supabase.createClient(
     window.getConfig("url"),
     window.getConfig("role") || window.getConfig("anon"),
@@ -144,57 +130,102 @@
     }
   );
 
-  // ================== TẠO MAP ==================
   const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
     maxZoom:19
   }).addTo(map);
 
-  // ================== LẤY KH ==================
-  async function fetchAllRows() {
-  const pageSize = 1000;
-  let from = 0;
-  let allRows = [];
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("nv_checkin_khach_hang")
-      .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,Da_mua_hang")
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    allRows = allRows.concat(data);
-
-    if (data.length < pageSize) break;
-    from += pageSize;
+  function toNumber(v, fallback = 0){
+    if (v === null || v === undefined || v === "") return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
   }
 
-  return allRows;
-}
+  function normalizePhone(v){
+    return String(v || "").replace(/\D/g, "").trim();
+  }
 
-const data = await fetchAllRows();
-console.log("Tổng rows lấy được:", data.length);
+  function isBought(v){
+    if (v === true) return true;
+    if (v === false) return false;
+    const s = String(v || "").trim().toLowerCase();
+    return s === "true" || s === "1" || s === "yes" || s === "đã mua hàng" || s === "da mua hang";
+  }
+
+  function getLevel(row){
+    const hasPhone = normalizePhone(row.dien_thoai) !== "";
+    const checkinMonth = toNumber(row.checkin_thang, 0);
+
+    if (checkinMonth > 0) return "3";
+    if (hasPhone) return "2";
+    return "1";
+  }
+
+  function getColor(row){
+    const level = getLevel(row);
+    if (level === "3") return "purple";
+    if (level === "2") return "orange";
+    return "red";
+  }
+
+  function getMarkerClass(color){
+    if (color === "purple") return "mk-purple";
+    if (color === "orange") return "mk-orange";
+    return "mk-red";
+  }
+
+  function getMarkerLabel(row, index){
+    const n = toNumber(row.checkin_thang, 0);
+    if (n > 0) return n;
+    return index + 1;
+  }
+
+  async function fetchAllRows() {
+    const pageSize = 1000;
+    let from = 0;
+    let allRows = [];
+
+    while (true) {
+      const { data, error } = await supabase
+        .from("nv_checkin_khach_hang")
+        .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang")
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      allRows = allRows.concat(data);
+
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return allRows;
+  }
+
+  const data = await fetchAllRows();
+  console.log("Tổng rows lấy được:", data.length);
 
   let points = [];
   let markers = [];
 
   data.forEach((r,i)=>{
-    if(!r.lat || !r.lng) return;
+    const lat = parseFloat(String(r.lat ?? "").trim());
+    const lng = parseFloat(String(r.lng ?? "").trim());
+    if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-    const lat = parseFloat(r.lat);
-    const lng = parseFloat(r.lng);
-    if(isNaN(lat)||isNaN(lng)) return;
-
-    const stt = i+1;
-    const isGreen = r.Da_mua_hang ? true : false;
+    const stt = getMarkerLabel(r, i);
+    const level = getLevel(r);
+    const color = getColor(r);
+    const markerClass = getMarkerClass(color);
+    const bought = isBought(r.Da_mua_hang);
 
     const icon = L.divIcon({
-      html:`<div class="${isGreen?'mk-green':'mk-red'}">${stt}</div>`,
+      html:`<div class="${markerClass}">${stt}</div>`,
       iconSize:[26,26],
-      iconAnchor:[13,13]
+      iconAnchor:[13,13],
+      className:""
     });
 
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
@@ -202,8 +233,15 @@ console.log("Tổng rows lấy được:", data.length);
       Mã KH: ${r.ma_kh || ""}<br>
       Địa chỉ: ${r.dia_chi || ""}<br>
       ĐT: ${r.dien_thoai || ""}<br>
-      NV: ${r.ma_nv || ""}<br>
-      Đã mua: <b>${r.Da_mua_hang?'✔ Có':'✘ Không'}</b>
+      NV: ${r.ten_nv || r.ma_nv || ""}<br>
+      Checkin tháng: <b>${toNumber(r.checkin_thang, 0)}</b><br>
+      Cấp độ: <b>${level}</b><br>
+      Màu: <b>${
+        color === "purple" ? "Tím" :
+        color === "orange" ? "Cam" :
+        "Đỏ"
+      }</b><br>
+      Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b>
     `);
 
     mk.addTo(map);
@@ -212,11 +250,16 @@ console.log("Tổng rows lấy được:", data.length);
       stt,
       lat,
       lng,
-      marker:mk,
-      color:isGreen ? "green" : "red",
-      nv:r.ma_nv || "",
-      row:r
+      marker: mk,
+      color,
+      level,
+      bought,
+      nvCode: String(r.ma_nv || "").trim(),
+      nvName: String(r.ten_nv || "").trim(),
+      nvPhone: String(r.dien_thoai || "").trim(),
+      row: r
     });
+
     markers.push(mk);
   });
 
@@ -225,7 +268,6 @@ console.log("Tổng rows lấy được:", data.length);
     map.fitBounds(grp.getBounds(),{padding:[50,50]});
   }
 
-  // ================== GPS ==================
   let userMarker = null;
   let userCircle = null;
   let lastLat = null;
@@ -284,28 +326,32 @@ console.log("Tổng rows lấy được:", data.length);
     }
   };
 
-  // ================== DROPDOWN LỌC NV ==================
   const nvFilter = document.getElementById("nvFilter");
-  const nvSet = new Set();
+  const nvMap = new Map();
 
-  points.forEach(p=>{
-    if(!p.nv) return;
-    p.nv.split("_").forEach(nv => nvSet.add(nv.trim()));
+  points.forEach(p => {
+    if (!p.nvCode) return;
+
+    if (!nvMap.has(p.nvCode)) {
+      const label = [p.nvCode, p.nvName].filter(Boolean).join(" - ") || p.nvCode;
+      nvMap.set(p.nvCode, label);
+    }
   });
 
-  nvSet.forEach(nv=>{
-    const opt=document.createElement("option");
-    opt.value=nv;
-    opt.textContent=nv;
-    nvFilter.appendChild(opt);
-  });
+  [...nvMap.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], "vi"))
+    .forEach(([code, label]) => {
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = label;
+      nvFilter.appendChild(opt);
+    });
 
-  // ================== LỌC (MÀU + NHÂN VIÊN + TÌM KIẾM) ==================
-  const colorFilter = document.getElementById("colorFilter");
+  const levelFilter = document.getElementById("levelFilter");
   const searchBox   = document.getElementById("searchBox");
 
   function applyFilter(){
-    const fColor = colorFilter.value;
+    const fLevel = levelFilter.value;
     const fNV    = nvFilter.value;
     const q      = searchBox.value.trim().toLowerCase();
 
@@ -313,30 +359,38 @@ console.log("Tổng rows lấy được:", data.length);
       const r = p.row;
       let ok = true;
 
-      // Lọc màu
-      if(fColor && p.color !== fColor) ok = false;
-
-      // Lọc nhân viên (tách theo "_")
-      if(fNV){
-        const nvList = p.nv.split("_").map(x=>x.trim()).filter(Boolean);
-        if(!nvList.includes(fNV)) ok = false;
+      if (fLevel === "1" || fLevel === "2" || fLevel === "3") {
+        if (p.level !== fLevel) ok = false;
       }
 
-      // Lọc theo từ khoá
+      if (fLevel === "buy") {
+        if (!p.bought) ok = false;
+      }
+
+      if (fLevel === "nobuy") {
+        if (p.bought) ok = false;
+      }
+
+      if (fNV) {
+        if (p.nvCode !== fNV) ok = false;
+      }
+
       if(q){
         const text = `
           ${r.ma_kh || ""}
           ${r.ten_kh || ""}
           ${r.dia_chi || ""}
           ${r.dien_thoai || ""}
-          ${r.ghi_ghu || ""}
+          ${r.ghi_chu || ""}
           ${r.ma_nv || ""}
+          ${r.ten_nv || ""}
+          ${r.checkin_thang || ""}
+          ${p.bought ? "da mua hang" : "chua mua hang"}
         `.toLowerCase();
 
         if(!text.includes(q)) ok = false;
       }
 
-      // Hiện / ẩn marker
       if(ok){
         if(!map.hasLayer(p.marker)) p.marker.addTo(map);
       }else{
@@ -344,14 +398,13 @@ console.log("Tổng rows lấy được:", data.length);
       }
     });
 
-    // Nếu chỉ còn 1 điểm sau khi lọc → zoom sát
     const remain = points.filter(p => map.hasLayer(p.marker));
     if(remain.length === 1){
       map.setView([remain[0].lat, remain[0].lng], 18);
     }
   }
 
-  colorFilter.onchange = applyFilter;
+  levelFilter.onchange = applyFilter;
   nvFilter.onchange    = applyFilter;
   searchBox.oninput    = applyFilter;
 
