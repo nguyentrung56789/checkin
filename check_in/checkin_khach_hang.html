@@ -55,6 +55,7 @@
     .btn-ok{background:var(--ok);color:#02220f}
     .btn-warn{background:var(--warn)}
 
+    /* Nút bị khóa */
     .btn-disabled{
       background:#4b5563 !important;
       color:#cbd5f5 !important;
@@ -93,6 +94,7 @@
     tbody tr:hover{background:#0f1930}
     .col-actions{white-space:nowrap}
 
+    /* NÚT MÃ KH */
     .ma-kh-btn{
       border:0;
       border-radius:999px;
@@ -229,6 +231,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
+/* ==== Tải supabase-js nếu chưa có ==== */
 async function getSupabaseLib(){
   if (window.supabase?.createClient) return window.supabase;
   const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
@@ -260,13 +263,16 @@ async function getSupabaseLib(){
 
   const TABLE           = 'nv_checkin_khach_hang';
   const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
+
+  // Bảng log checkin của nhân viên
   const CHECKIN_TABLE    = 'nv_checkin';
-  const CHECKIN_DATE_COL = 'ngay';
+  const CHECKIN_DATE_COL = 'ngay'; // text dạng dd/MM/yyyy hh:mm
 
   let SB            = null;
   let CURRENT       = null;
-  let CHECKED_TODAY = false;
+  let CHECKED_TODAY = false; // nhân viên hiện tại đã checkin hôm nay chưa
 
+  // ===== Helpers chung =====
   function getLatLngFromURL(){
     const qp = new URLSearchParams(location.search);
     const latRaw = qp.get('lat') ?? qp.get('latitude');
@@ -343,14 +349,6 @@ async function getSupabaseLib(){
     return null;
   }
 
-  function cssEscapeSafe(v){
-    try{
-      return CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g,'\\"');
-    }catch{
-      return String(v).replace(/"/g,'\\"');
-    }
-  }
-
   function getTodayPrefix_ddMMyyyy(){
     const d = new Date();
     const dd = String(d.getDate()).padStart(2,'0');
@@ -359,19 +357,27 @@ async function getSupabaseLib(){
     return `${dd}/${mm}/${yyyy}`;
   }
 
+  // ===== Khách đã checkin hôm nay hay chưa, dựa trên text ngay_cuoi_cung_checkin =====
   function isSameTodayFromText(v){
     const s = String(v || '').trim();
     if (!s) return false;
     return s.startsWith(getTodayPrefix_ddMMyyyy());
   }
 
-  function filterHiddenTodayRows(rows){
+  function getCheckinTodayState(rows){
     const all = Array.isArray(rows) ? rows : [];
-    const hidden = all.filter(r => isSameTodayFromText(r.ngay_cuoi_cung_checkin));
-    const visible = all.filter(r => !isSameTodayFromText(r.ngay_cuoi_cung_checkin));
-    return { visible, hiddenCount: hidden.length };
+    let disabledCount = 0;
+
+    const mapped = all.map(r => {
+      const checkedToday = isSameTodayFromText(r.ngay_cuoi_cung_checkin);
+      if (checkedToday) disabledCount++;
+      return { ...r, checkedToday };
+    });
+
+    return { rows: mapped, disabledCount };
   }
 
+  // ===== Khóa / mở khóa nút theo CHECKED_TODAY của nhân viên =====
   function applyCheckedTodayLock(){
     const btnAdd = $('#btnAdd');
     if (btnAdd){
@@ -395,6 +401,7 @@ async function getSupabaseLib(){
     });
   }
 
+  // ===== Kiểm tra nhân viên hiện tại đã checkin hôm nay chưa =====
   async function loadCheckedToday(){
     CHECKED_TODAY = false;
 
@@ -420,7 +427,8 @@ async function getSupabaseLib(){
       const HAS_CHECKIN_TODAY = Array.isArray(data) && data.length > 0;
       console.log('HAS_CHECKIN_TODAY =', HAS_CHECKIN_TODAY, data);
 
-      CHECKED_TODAY = false;
+      // nếu muốn khóa theo nhân viên, bật dòng dưới:
+      CHECKED_TODAY = HAS_CHECKIN_TODAY;
       return HAS_CHECKIN_TODAY;
     }catch(err){
       console.warn('Lỗi đọc nv_checkin:', err);
@@ -460,10 +468,12 @@ async function getSupabaseLib(){
     }
   }
 
+  // ===== Modal =====
   function openModal(mode,row=null){
     CURRENT = { mode };
     $('#modalTitle').textContent = mode==='add' ? 'Thêm khách hàng' : 'Sửa khách hàng';
     $('#f_ma_kh').disabled = (mode==='edit');
+
     if (mode==='edit' && row){
       $('#f_ma_kh').value      = row.ma_kh || '';
       $('#f_ten_kh').value     = row.ten_kh || '';
@@ -476,11 +486,13 @@ async function getSupabaseLib(){
       $('#f_dia_chi').value    = '';
       $('#f_dien_thoai').value = '';
     }
+
     $('#modalWrap').style.display = 'flex';
   }
 
   const closeModal = () => $('#modalWrap').style.display='none';
 
+  // ===== Supabase client =====
   async function makeClient(){
     const url  = getConfig('url');
     const anon = getConfig('anon');
@@ -488,12 +500,13 @@ async function getSupabaseLib(){
     return lib.createClient(url,anon,{auth:{persistSession:false}});
   }
 
+  // ===== Load all =====
   async function loadData(){
     $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
 
     const { data, error } = await SB
       .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,dien_thoai,ngay_cuoi_cung_checkin')
+      .select('ma_kh,ten_kh,dia_chi,dien_thoai,ngay_cuoi_cung_checkin',{count:'exact'})
       .order('ten_kh',{ascending:true})
       .limit(500);
 
@@ -504,15 +517,15 @@ async function getSupabaseLib(){
       return;
     }
 
-    const { visible, hiddenCount } = filterHiddenTodayRows(data || []);
+    const { rows, disabledCount } = getCheckinTodayState(data || []);
 
     $('#countInfo').textContent =
-      `${visible.length} dòng` + (hiddenCount ? ` • Ẩn ${hiddenCount} KH đã check-in hôm nay` : '');
+      `${rows.length} dòng` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
 
-    renderRows(visible);
+    renderRows(rows);
 
-    if (hiddenCount > 0){
-      toast(`Đã ẩn ${hiddenCount} khách có ngày_cuoi_cung_checkin là hôm nay`, 'ok');
+    if (disabledCount > 0){
+      toast(`Đã disable ${disabledCount} khách có ngày_cuoi_cung_checkin là hôm nay`, 'ok');
     }
   }
 
@@ -522,20 +535,31 @@ async function getSupabaseLib(){
         `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
     } else {
       const html = rows.map(r => {
-        const disabled = CHECKED_TODAY === true;
+        const disabledByNV = CHECKED_TODAY === true;
+        const disabledByCustomer = r.checkedToday === true;
+        const disabled = disabledByNV || disabledByCustomer;
+
+        let title = 'Nhân viên đã checkin hôm nay';
+        if (disabledByCustomer) title = 'Khách này đã check-in hôm nay';
+
         const btnHtml = disabled
-          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="Nhân viên đã checkin hôm nay">${escAttr(r.ma_kh)}</button>`
+          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="${escAttr(title)}">${escAttr(r.ma_kh)}</button>`
           : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${escAttr(r.ma_kh)}</button>`;
+
         return `
       <tr data-id="${escAttr(r.ma_kh)}"
           data-ten_kh="${escAttr(r.ten_kh||'')}"
           data-dia_chi="${escAttr(r.dia_chi||'')}"
-          data-dien_thoai="${escAttr(r.dien_thoai||'')}">
+          data-dien_thoai="${escAttr(r.dien_thoai||'')}"
+          data-ngay_cuoi_cung_checkin="${escAttr(r.ngay_cuoi_cung_checkin||'')}">
 
         <td class="col-ma">
           ${btnHtml}
         </td>
-        <td class="col-ten">${r.ten_kh || ''}</td>
+        <td class="col-ten">
+          ${r.ten_kh || ''}
+          ${disabledByCustomer ? `<span class="muted"> • Đã check-in hôm nay</span>` : ``}
+        </td>
         <td class="col-phone">${r.dien_thoai || ''}</td>
         <td class="col-actions">
           <button class="btn btn-warn btn-edit">Sửa</button>
@@ -549,6 +573,7 @@ async function getSupabaseLib(){
     $$('#tbody .btn-edit').forEach(b =>
       b.addEventListener('click', onEditClick)
     );
+
     $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
       b.addEventListener('click', () => onMaKHClick(b.dataset.id))
     );
@@ -568,12 +593,14 @@ async function getSupabaseLib(){
     openModal('edit', row);
   }
 
+  // ===== Click Mã KH → gửi webhook =====
   async function onMaKHClick(ma_kh){
     const coords = getLatLngFromURL();
     if (!coords){
       toast('Thiếu toạ độ lat/lng trong URL — không thể checkin','err');
       return;
     }
+
     const ma_nv  = getCurrentNVID();
     const ten_nv = getCurrentNVName();
     const img    = getImagePayloadFromSession();
@@ -594,9 +621,6 @@ async function getSupabaseLib(){
       if (res.ok){
         CHECKED_TODAY = true;
 
-        const tr = document.querySelector(`tr[data-id="${cssEscapeSafe(ma_kh)}"]`);
-        if (tr) tr.remove();
-
         $$('.ma-kh-btn').forEach(btn=>{
           btn.classList.add('ma-kh-disabled');
           btn.disabled = true;
@@ -605,12 +629,6 @@ async function getSupabaseLib(){
         });
 
         applyCheckedTodayLock();
-
-        const rowCount = $$('#tbody tr[data-id]').length;
-        const oldText = $('#countInfo').textContent || '';
-        const hiddenMatch = oldText.match(/Ẩn\s+(\d+)\s+KH/i);
-        const hiddenText = hiddenMatch ? ` • Ẩn ${hiddenMatch[1]} KH đã check-in hôm nay` : '';
-        $('#countInfo').textContent = `${rowCount} dòng${hiddenText}`;
 
         toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
       } else {
@@ -622,6 +640,7 @@ async function getSupabaseLib(){
     }
   }
 
+  // ===== Tự sinh mã =====
   function generateMaKH(){
     const d = new Date();
     const yy = String(d.getFullYear()).slice(-2);
@@ -639,6 +658,7 @@ async function getSupabaseLib(){
       .select('ma_kh')
       .eq('ma_kh', ma_kh)
       .limit(1);
+
     if (error){
       console.error('Lỗi check mã KH:', error);
       return false;
@@ -646,6 +666,7 @@ async function getSupabaseLib(){
     return Array.isArray(data) && data.length > 0;
   }
 
+  // ===== Lưu =====
   async function saveForm(){
     let ma_kh      = $('#f_ma_kh').value.trim();
     const ten_kh     = $('#f_ten_kh').value.trim();
@@ -658,9 +679,10 @@ async function getSupabaseLib(){
         $('#f_ma_kh').value = ma_kh;
         toast(`Tự sinh mã KH: ${ma_kh}`,'ok');
       }
+
       const exists = await checkMaKHExists(ma_kh);
       if (exists){
-        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,'err');
+        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,`err`);
         return;
       }
     } else {
@@ -678,6 +700,7 @@ async function getSupabaseLib(){
       const { error } = await SB
         .from(TABLE)
         .insert([{ ma_kh, ten_kh, dia_chi, dien_thoai, lat, lng }]);
+
       if (error){
         console.error(error);
         toast('Thêm thất bại','err');
@@ -689,6 +712,7 @@ async function getSupabaseLib(){
         .from(TABLE)
         .update({ ten_kh, dia_chi, dien_thoai, lat, lng })
         .eq('ma_kh', CURRENT.ma_kh);
+
       if (error){
         console.error(error);
         toast('Sửa thất bại','err');
@@ -705,6 +729,7 @@ async function getSupabaseLib(){
     }
   }
 
+  // ===== Nearby =====
   async function runNearby(lat, lng, radius){
     const $tbody = $('#tbody');
     $tbody.innerHTML =
@@ -734,9 +759,9 @@ async function getSupabaseLib(){
       return;
     }
 
-    const { visible, hiddenCount } = filterHiddenTodayRows(data || []);
+    const { rows: sourceRows, disabledCount } = getCheckinTodayState(data || []);
 
-    const rows = visible
+    const rows = sourceRows
       .map(r=>({ ...r, rlat:Number(r.lat), rlng:Number(r.lng) }))
       .filter(r=>Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
 
@@ -755,54 +780,22 @@ async function getSupabaseLib(){
       $('#tbody').innerHTML =
         `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
       $('#countInfo').textContent =
-        `0 dòng (lọc ${Math.round(radius)}m)` + (hiddenCount ? ` • Ẩn ${hiddenCount} KH đã check-in hôm nay` : '');
+        `0 dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
       return;
-    } else {
-      toast(
-        `Tìm thấy ${nearby.length} KH` + (hiddenCount ? ` • Đã ẩn ${hiddenCount} KH đã check-in hôm nay` : ''),
-        'ok'
-      );
-
-      const html = nearby.map(r=>{
-        const disabled = CHECKED_TODAY === true;
-        const btnHtml = disabled
-          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="Nhân viên đã checkin hôm nay">${r.ma_kh}</button>`
-          : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${r.ma_kh}</button>`;
-        return `
-        <tr data-id="${escAttr(r.ma_kh)}"
-            data-ten_kh="${escAttr(r.ten_kh||'')}"
-            data-dia_chi="${escAttr(r.dia_chi||'')}"
-            data-dien_thoai="${escAttr(r.dien_thoai||'')}">
-
-          <td class="col-ma">
-            ${btnHtml}
-          </td>
-          <td class="col-ten">
-            ${escAttr(r.ten_kh||'')}
-            <span class="muted"> • ${r.dist}m</span>
-          </td>
-          <td class="col-phone">${r.dien_thoai || ''}</td>
-          <td class="col-actions">
-            <button class="btn btn-warn btn-edit">Sửa</button>
-          </td>
-        </tr>`;
-      }).join('');
-
-      $('#tbody').innerHTML = html;
-      $('#countInfo').textContent =
-        `${nearby.length} dòng (lọc ${Math.round(radius)}m)` + (hiddenCount ? ` • Ẩn ${hiddenCount} KH đã check-in hôm nay` : '');
-
-      $$('#tbody .btn-edit').forEach(b =>
-        b.addEventListener('click', onEditClick)
-      );
-      $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
-        b.addEventListener('click', () => onMaKHClick(b.dataset.id))
-      );
-
-      applyCheckedTodayLock();
     }
+
+    toast(
+      `Tìm thấy ${nearby.length} KH` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : ''),
+      'ok'
+    );
+
+    renderRows(nearby);
+
+    $('#countInfo').textContent =
+      `${nearby.length} dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
   }
 
+  // ===== Events =====
   $('#btnAdd').addEventListener('click',()=>openModal('add'));
   $('#btnCancel').addEventListener('click',closeModal);
   $('#btnSave').addEventListener('click',saveForm);
@@ -821,11 +814,13 @@ async function getSupabaseLib(){
     else toast('Thiếu toạ độ lat/lng trong URL để lọc theo bán kính', 'err');
   });
 
+  // ===== Init =====
   try{
     SB = await makeClient();
 
     await loadCheckedToday();
     applyCheckedTodayLock();
+
     initRadiusFromURLOrDefault();
 
     const coords = getLatLngFromURL();
