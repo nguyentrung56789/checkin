@@ -55,7 +55,6 @@
     .btn-ok{background:var(--ok);color:#02220f}
     .btn-warn{background:var(--warn)}
 
-    /* Nút bị khóa */
     .btn-disabled{
       background:#4b5563 !important;
       color:#cbd5f5 !important;
@@ -94,7 +93,6 @@
     tbody tr:hover{background:#0f1930}
     .col-actions{white-space:nowrap}
 
-    /* NÚT MÃ KH */
     .ma-kh-btn{
       border:0;
       border-radius:999px;
@@ -264,15 +262,13 @@ async function getSupabaseLib(){
   const TABLE           = 'nv_checkin_khach_hang';
   const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
 
-  // Bảng log checkin của nhân viên
+  // vẫn giữ để tham chiếu nếu cần, nhưng không dùng để khóa toàn bộ nữa
   const CHECKIN_TABLE    = 'nv_checkin';
-  const CHECKIN_DATE_COL = 'ngay'; // text dạng dd/MM/yyyy hh:mm
+  const CHECKIN_DATE_COL = 'ngay';
 
-  let SB            = null;
-  let CURRENT       = null;
-  let CHECKED_TODAY = false; // nhân viên hiện tại đã checkin hôm nay chưa
+  let SB      = null;
+  let CURRENT = null;
 
-  // ===== Helpers chung =====
   function getLatLngFromURL(){
     const qp = new URLSearchParams(location.search);
     const latRaw = qp.get('lat') ?? qp.get('latitude');
@@ -298,7 +294,7 @@ async function getSupabaseLib(){
 
   function getRadiusFromUI(){
     const v = Number($('#radiusSelect').value);
-    return Number.isFinite(v) && v>0 ? v : 50;
+    return Number.isFinite(v) && v > 0 ? v : 50;
   }
 
   function getCurrentNVID(){
@@ -357,7 +353,7 @@ async function getSupabaseLib(){
     return `${dd}/${mm}/${yyyy}`;
   }
 
-  // ===== Khách đã checkin hôm nay hay chưa, dựa trên text ngay_cuoi_cung_checkin =====
+  // ===== Chỉ disable theo từng khách =====
   function isSameTodayFromText(v){
     const s = String(v || '').trim();
     if (!s) return false;
@@ -377,34 +373,22 @@ async function getSupabaseLib(){
     return { rows: mapped, disabledCount };
   }
 
-  // ===== Khóa / mở khóa nút theo CHECKED_TODAY của nhân viên =====
+  // ===== Không khóa toàn bộ nữa =====
   function applyCheckedTodayLock(){
     const btnAdd = $('#btnAdd');
     if (btnAdd){
-      if (CHECKED_TODAY){
-        btnAdd.classList.add('btn-disabled');
-        btnAdd.disabled = true;
-      }else{
-        btnAdd.classList.remove('btn-disabled');
-        btnAdd.disabled = false;
-      }
+      btnAdd.classList.remove('btn-disabled');
+      btnAdd.disabled = false;
     }
 
     $$('#tbody .btn-edit').forEach(b=>{
-      if (CHECKED_TODAY){
-        b.classList.add('btn-disabled');
-        b.disabled = true;
-      }else{
-        b.classList.remove('btn-disabled');
-        b.disabled = false;
-      }
+      b.classList.remove('btn-disabled');
+      b.disabled = false;
     });
   }
 
-  // ===== Kiểm tra nhân viên hiện tại đã checkin hôm nay chưa =====
   async function loadCheckedToday(){
-    CHECKED_TODAY = false;
-
+    // giữ hàm này để không vỡ luồng cũ, nhưng không dùng để khóa toàn bộ
     const ma_nv = getCurrentNVID();
     if (!ma_nv) return false;
 
@@ -420,19 +404,14 @@ async function getSupabaseLib(){
 
       if (error){
         console.warn('nv_checkin bị chặn quyền/RLS:', error.message || error);
-        CHECKED_TODAY = false;
         return false;
       }
 
-      const HAS_CHECKIN_TODAY = Array.isArray(data) && data.length > 0;
-      console.log('HAS_CHECKIN_TODAY =', HAS_CHECKIN_TODAY, data);
-
-      // nếu muốn khóa theo nhân viên, bật dòng dưới:
-      CHECKED_TODAY = HAS_CHECKIN_TODAY;
-      return HAS_CHECKIN_TODAY;
+      const hasCheckinToday = Array.isArray(data) && data.length > 0;
+      console.log('HAS_CHECKIN_TODAY =', hasCheckinToday, data);
+      return hasCheckinToday;
     }catch(err){
       console.warn('Lỗi đọc nv_checkin:', err);
-      CHECKED_TODAY = false;
       return false;
     }
   }
@@ -468,7 +447,6 @@ async function getSupabaseLib(){
     }
   }
 
-  // ===== Modal =====
   function openModal(mode,row=null){
     CURRENT = { mode };
     $('#modalTitle').textContent = mode==='add' ? 'Thêm khách hàng' : 'Sửa khách hàng';
@@ -492,7 +470,6 @@ async function getSupabaseLib(){
 
   const closeModal = () => $('#modalWrap').style.display='none';
 
-  // ===== Supabase client =====
   async function makeClient(){
     const url  = getConfig('url');
     const anon = getConfig('anon');
@@ -500,7 +477,6 @@ async function getSupabaseLib(){
     return lib.createClient(url,anon,{auth:{persistSession:false}});
   }
 
-  // ===== Load all =====
   async function loadData(){
     $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
 
@@ -535,12 +511,10 @@ async function getSupabaseLib(){
         `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
     } else {
       const html = rows.map(r => {
-        const disabledByNV = CHECKED_TODAY === true;
         const disabledByCustomer = r.checkedToday === true;
-        const disabled = disabledByNV || disabledByCustomer;
+        const disabled = disabledByCustomer;
 
-        let title = 'Nhân viên đã checkin hôm nay';
-        if (disabledByCustomer) title = 'Khách này đã check-in hôm nay';
+        const title = 'Khách này đã check-in hôm nay';
 
         const btnHtml = disabled
           ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="${escAttr(title)}">${escAttr(r.ma_kh)}</button>`
@@ -593,7 +567,6 @@ async function getSupabaseLib(){
     openModal('edit', row);
   }
 
-  // ===== Click Mã KH → gửi webhook =====
   async function onMaKHClick(ma_kh){
     const coords = getLatLngFromURL();
     if (!coords){
@@ -619,18 +592,14 @@ async function getSupabaseLib(){
     try{
       const res = await postWebhook(payload);
       if (res.ok){
-        CHECKED_TODAY = true;
-
-        $$('.ma-kh-btn').forEach(btn=>{
-          btn.classList.add('ma-kh-disabled');
-          btn.disabled = true;
-          btn.removeAttribute('data-id');
-          btn.title = 'Nhân viên đã checkin hôm nay';
-        });
-
-        applyCheckedTodayLock();
-
         toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
+
+        const coords = getLatLngFromURL();
+        if (coords){
+          runNearby(coords.lat, coords.lng, getRadiusFromUI());
+        } else {
+          loadData();
+        }
       } else {
         toast(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`,'err');
       }
@@ -640,7 +609,6 @@ async function getSupabaseLib(){
     }
   }
 
-  // ===== Tự sinh mã =====
   function generateMaKH(){
     const d = new Date();
     const yy = String(d.getFullYear()).slice(-2);
@@ -666,7 +634,6 @@ async function getSupabaseLib(){
     return Array.isArray(data) && data.length > 0;
   }
 
-  // ===== Lưu =====
   async function saveForm(){
     let ma_kh      = $('#f_ma_kh').value.trim();
     const ten_kh     = $('#f_ten_kh').value.trim();
@@ -682,7 +649,7 @@ async function getSupabaseLib(){
 
       const exists = await checkMaKHExists(ma_kh);
       if (exists){
-        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,`err`);
+        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,'err');
         return;
       }
     } else {
@@ -729,7 +696,6 @@ async function getSupabaseLib(){
     }
   }
 
-  // ===== Nearby =====
   async function runNearby(lat, lng, radius){
     const $tbody = $('#tbody');
     $tbody.innerHTML =
@@ -795,7 +761,6 @@ async function getSupabaseLib(){
       `${nearby.length} dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
   }
 
-  // ===== Events =====
   $('#btnAdd').addEventListener('click',()=>openModal('add'));
   $('#btnCancel').addEventListener('click',closeModal);
   $('#btnSave').addEventListener('click',saveForm);
@@ -814,11 +779,10 @@ async function getSupabaseLib(){
     else toast('Thiếu toạ độ lat/lng trong URL để lọc theo bán kính', 'err');
   });
 
-  // ===== Init =====
   try{
     SB = await makeClient();
 
-    await loadCheckedToday();
+    await loadCheckedToday(); // chỉ đọc tham khảo, không khóa toàn bộ
     applyCheckedTodayLock();
 
     initRadiusFromURLOrDefault();
