@@ -500,9 +500,6 @@ async function getSupabaseLib(){
 
     renderRows(rows);
 
-    if (disabledCount > 0){
-      toast(`Đã disable ${disabledCount} khách có ngày_cuoi_cung_checkin là hôm nay`, 'ok');
-    }
   }
 
   function renderRows(rows){
@@ -750,10 +747,6 @@ async function getSupabaseLib(){
       return;
     }
 
-    toast(
-      `Tìm thấy ${nearby.length} KH` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : ''),
-      'ok'
-    );
 
     renderRows(nearby);
 
