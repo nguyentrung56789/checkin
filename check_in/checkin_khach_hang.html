@@ -229,7 +229,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-/* ==== Tải supabase-js nếu chưa có ==== */
 async function getSupabaseLib(){
   if (window.supabase?.createClient) return window.supabase;
   const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
@@ -259,11 +258,17 @@ async function getSupabaseLib(){
       .replace(/</g,'&lt;');
   }
 
+  function cssEscapeSafe(v){
+    try{
+      return CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g,'\\"');
+    }catch{
+      return String(v).replace(/"/g,'\\"');
+    }
+  }
+
   const TABLE           = 'nv_checkin_khach_hang';
   const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
-
-  // vẫn giữ để tham chiếu nếu cần, nhưng không dùng để khóa toàn bộ nữa
-  const CHECKIN_TABLE    = 'nv_checkin';
+  const CHECKIN_TABLE   = 'nv_checkin';
   const CHECKIN_DATE_COL = 'ngay';
 
   let SB      = null;
@@ -353,7 +358,6 @@ async function getSupabaseLib(){
     return `${dd}/${mm}/${yyyy}`;
   }
 
-  // ===== Chỉ disable theo từng khách =====
   function isSameTodayFromText(v){
     const s = String(v || '').trim();
     if (!s) return false;
@@ -373,7 +377,6 @@ async function getSupabaseLib(){
     return { rows: mapped, disabledCount };
   }
 
-  // ===== Không khóa toàn bộ nữa =====
   function applyCheckedTodayLock(){
     const btnAdd = $('#btnAdd');
     if (btnAdd){
@@ -388,7 +391,6 @@ async function getSupabaseLib(){
   }
 
   async function loadCheckedToday(){
-    // giữ hàm này để không vỡ luồng cũ, nhưng không dùng để khóa toàn bộ
     const ma_nv = getCurrentNVID();
     if (!ma_nv) return false;
 
@@ -477,7 +479,7 @@ async function getSupabaseLib(){
     return lib.createClient(url,anon,{auth:{persistSession:false}});
   }
 
-  async function loadData(){
+  async function loadData(showStatusToast = false){
     $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
 
     const { data, error } = await SB
@@ -500,6 +502,9 @@ async function getSupabaseLib(){
 
     renderRows(rows);
 
+    if (showStatusToast && disabledCount > 0){
+      toast(`Đã disable ${disabledCount} khách có ngày_cuoi_cung_checkin là hôm nay`, 'ok');
+    }
   }
 
   function renderRows(rows){
@@ -510,7 +515,6 @@ async function getSupabaseLib(){
       const html = rows.map(r => {
         const disabledByCustomer = r.checkedToday === true;
         const disabled = disabledByCustomer;
-
         const title = 'Khách này đã check-in hôm nay';
 
         const btnHtml = disabled
@@ -571,6 +575,15 @@ async function getSupabaseLib(){
       return;
     }
 
+    const currentBtn = document.querySelector(`.ma-kh-btn[data-id="${cssEscapeSafe(ma_kh)}"]`);
+    if (currentBtn){
+      currentBtn.disabled = true;
+      currentBtn.classList.add('ma-kh-disabled');
+      currentBtn.textContent = 'Đang gửi...';
+      currentBtn.removeAttribute('data-id');
+      currentBtn.title = 'Đang gửi check-in...';
+    }
+
     const ma_nv  = getCurrentNVID();
     const ten_nv = getCurrentNVName();
     const img    = getImagePayloadFromSession();
@@ -588,20 +601,40 @@ async function getSupabaseLib(){
 
     try{
       const res = await postWebhook(payload);
+
       if (res.ok){
         toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
 
-        const coords = getLatLngFromURL();
-        if (coords){
-          runNearby(coords.lat, coords.lng, getRadiusFromUI());
-        } else {
-          loadData();
-        }
+        setTimeout(() => {
+          const coords2 = getLatLngFromURL();
+          if (coords2){
+            runNearby(coords2.lat, coords2.lng, getRadiusFromUI(), false);
+          } else {
+            loadData(false);
+          }
+        }, 1200);
+
       } else {
+        if (currentBtn){
+          currentBtn.disabled = false;
+          currentBtn.classList.remove('ma-kh-disabled');
+          currentBtn.textContent = ma_kh;
+          currentBtn.setAttribute('data-id', ma_kh);
+          currentBtn.title = '';
+        }
         toast(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`,'err');
       }
     }catch(err){
       console.error(err);
+
+      if (currentBtn){
+        currentBtn.disabled = false;
+        currentBtn.classList.remove('ma-kh-disabled');
+        currentBtn.textContent = ma_kh;
+        currentBtn.setAttribute('data-id', ma_kh);
+        currentBtn.title = '';
+      }
+
       toast('Gửi webhook thất bại','err');
     }
   }
@@ -687,13 +720,13 @@ async function getSupabaseLib(){
 
     closeModal();
     if (coords){
-      runNearby(coords.lat, coords.lng, getRadiusFromUI());
+      runNearby(coords.lat, coords.lng, getRadiusFromUI(), false);
     } else {
-      loadData();
+      loadData(false);
     }
   }
 
-  async function runNearby(lat, lng, radius){
+  async function runNearby(lat, lng, radius, showStatusToast = false){
     const $tbody = $('#tbody');
     $tbody.innerHTML =
       `<tr><td colspan="4" class="muted">Đang lọc theo bán kính...</td></tr>`;
@@ -728,7 +761,7 @@ async function getSupabaseLib(){
       .map(r=>({ ...r, rlat:Number(r.lat), rlng:Number(r.lng) }))
       .filter(r=>Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
 
-    let nearby = rows.map(r=>{
+    const nearby = rows.map(r=>{
       const dLat = (r.rlat - lat) * d2r;
       const dLng = (r.rlng - lng) * d2r;
       const a = Math.sin(dLat/2)**2 +
@@ -739,19 +772,27 @@ async function getSupabaseLib(){
       .sort((a,b)=>a.dist - b.dist);
 
     if (nearby.length === 0){
-      toast(`Không có KH trong ${(Math.round(radius/100)/10)} km`, 'info');
       $('#tbody').innerHTML =
         `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
       $('#countInfo').textContent =
         `0 dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
+      if (showStatusToast){
+        toast(`Không có KH trong ${Math.round(radius)}m`, 'info');
+      }
       return;
     }
-
 
     renderRows(nearby);
 
     $('#countInfo').textContent =
       `${nearby.length} dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
+
+    if (showStatusToast){
+      toast(
+        `Tìm thấy ${nearby.length} KH` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : ''),
+        'ok'
+      );
+    }
   }
 
   $('#btnAdd').addEventListener('click',()=>openModal('add'));
@@ -768,14 +809,14 @@ async function getSupabaseLib(){
   $('#radiusSelect').addEventListener('change',()=>{
     const coords = getLatLngFromURL();
     const r = getRadiusFromUI();
-    if (coords) runNearby(coords.lat, coords.lng, r);
+    if (coords) runNearby(coords.lat, coords.lng, r, true);
     else toast('Thiếu toạ độ lat/lng trong URL để lọc theo bán kính', 'err');
   });
 
   try{
     SB = await makeClient();
 
-    await loadCheckedToday(); // chỉ đọc tham khảo, không khóa toàn bộ
+    await loadCheckedToday();
     applyCheckedTodayLock();
 
     initRadiusFromURLOrDefault();
@@ -783,10 +824,9 @@ async function getSupabaseLib(){
     const coords = getLatLngFromURL();
     if (coords){
       const r = getRadiusFromUI();
-      toast(`lat=${coords.lat.toFixed(6)} • lng=${coords.lng.toFixed(6)} • r=${Math.round(r)}m`, 'ok');
-      runNearby(coords.lat, coords.lng, r);
+      runNearby(coords.lat, coords.lng, r, false);
     }else{
-      loadData();
+      loadData(false);
     }
   }catch(e){
     console.error(e);
