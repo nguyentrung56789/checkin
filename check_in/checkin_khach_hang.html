@@ -273,6 +273,7 @@ async function getSupabaseLib(){
 
   let SB      = null;
   let CURRENT = null;
+  const pendingCheckins = new Set();
 
   function getLatLngFromURL(){
     const qp = new URLSearchParams(location.search);
@@ -569,11 +570,10 @@ async function getSupabaseLib(){
   }
 
   async function onMaKHClick(ma_kh){
-    const coords = getLatLngFromURL();
-    if (!coords){
-      toast('Thiếu toạ độ lat/lng trong URL — không thể checkin','err');
-      return;
-    }
+    if (!ma_kh) return;
+
+    if (pendingCheckins.has(ma_kh)) return;
+    pendingCheckins.add(ma_kh);
 
     const currentBtn = document.querySelector(`.ma-kh-btn[data-id="${cssEscapeSafe(ma_kh)}"]`);
     if (currentBtn){
@@ -588,18 +588,23 @@ async function getSupabaseLib(){
     const ten_nv = getCurrentNVName();
     const img    = getImagePayloadFromSession();
 
-    const payload = {
-      action: 'checkin',
-      ma_kh,
-      ma_nv:  ma_nv  || null,
-      ten_nv: ten_nv || null,
-      lat: Number(coords.lat),
-      lng: Number(coords.lng),
-      image_mime: img?.image_mime || 'image/jpeg',
-      image_b64:  img?.image_b64  || ''
-    };
-
     try{
+      const coords = getLatLngFromURL();
+      if (!coords){
+        throw new Error('Thiếu toạ độ lat/lng trong URL — không thể checkin');
+      }
+
+      const payload = {
+        action: 'checkin',
+        ma_kh,
+        ma_nv:  ma_nv  || null,
+        ten_nv: ten_nv || null,
+        lat: Number(coords.lat),
+        lng: Number(coords.lng),
+        image_mime: img?.image_mime || 'image/jpeg',
+        image_b64:  img?.image_b64  || ''
+      };
+
       const res = await postWebhook(payload);
 
       if (res.ok){
@@ -613,18 +618,10 @@ async function getSupabaseLib(){
             loadData(false);
           }
         }, 1200);
-
       } else {
-        if (currentBtn){
-          currentBtn.disabled = false;
-          currentBtn.classList.remove('ma-kh-disabled');
-          currentBtn.textContent = ma_kh;
-          currentBtn.setAttribute('data-id', ma_kh);
-          currentBtn.title = '';
-        }
-        toast(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`,'err');
+        throw new Error(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`);
       }
-    }catch(err){
+    } catch(err){
       console.error(err);
 
       if (currentBtn){
@@ -635,7 +632,9 @@ async function getSupabaseLib(){
         currentBtn.title = '';
       }
 
-      toast('Gửi webhook thất bại','err');
+      toast(err.message || 'Gửi webhook thất bại','err');
+    } finally {
+      pendingCheckins.delete(ma_kh);
     }
   }
 
