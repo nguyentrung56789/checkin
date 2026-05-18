@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Báo cáo check-in khách hàng</title>
 
-  <!-- Cấu hình nội bộ + Supabase -->
   <script src="./js/internal_key.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -22,14 +21,19 @@
       --warn:#f59e0b;
       --err:#ef4444;
     }
+
     *{box-sizing:border-box;}
+
     html,body{
-      margin:0;padding:0;
-      background:var(--bg);color:var(--text);
+      margin:0;
+      padding:0;
+      background:var(--bg);
+      color:var(--text);
       font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
+
     .wrap{
-      max-width:480px;          /* giống màn hình ĐT */
+      max-width:480px;
       margin:16px auto 32px;
       padding:0 12px;
     }
@@ -41,15 +45,18 @@
       gap:12px;
       margin-bottom:12px;
     }
+
     .top-left h1{
       margin:0;
       font-size:22px;
       letter-spacing:0.01em;
     }
+
     .top-right{
       display:flex;
       align-items:center;
       gap:8px;
+      flex-shrink:0;
     }
 
     .btn{
@@ -63,10 +70,13 @@
       white-space:nowrap;
       display:inline-flex;
       align-items:center;
+      justify-content:center;
       gap:6px;
     }
+
     .btn:hover{opacity:.94;}
     .btn:disabled{opacity:.55;cursor:default;}
+
     .btn-map{
       background:#eff6ff;
       border:1px solid var(--accent);
@@ -86,6 +96,7 @@
       margin-bottom:10px;
       box-shadow:0 10px 20px rgba(15,23,42,0.04);
     }
+
     .filter-item{
       display:flex;
       flex-direction:column;
@@ -93,10 +104,12 @@
       min-width:200px;
       flex:1 1 220px;
     }
+
     .filter-item label{
       font-size:13px;
       color:var(--muted);
     }
+
     .filter-item select,
     .filter-item input{
       padding:8px 10px;
@@ -106,6 +119,7 @@
       color:var(--text);
       font-size:14px;
     }
+
     .filter-item select:focus,
     .filter-item input:focus{
       outline:none;
@@ -113,17 +127,18 @@
       box-shadow:0 0 0 1px var(--accent-soft);
       background:#ffffff;
     }
+
     .filter-actions{
       justify-content:flex-end;
       align-items:flex-end;
     }
 
-    /* Dải nút chọn nhanh thời gian */
     .range-presets{
       display:flex;
       flex-wrap:wrap;
       gap:6px;
     }
+
     .range-pill{
       padding:6px 10px;
       border-radius:999px;
@@ -134,6 +149,7 @@
       color:var(--muted);
       white-space:nowrap;
     }
+
     .range-pill.active{
       background:var(--accent-soft);
       border-color:var(--accent);
@@ -141,7 +157,6 @@
       font-weight:500;
     }
 
-    /* Hàng Từ / Đến trên 1 dòng */
     .range-custom{
       display:flex;
       align-items:center;
@@ -151,15 +166,96 @@
       color:var(--muted);
       flex-wrap:wrap;
     }
+
     .range-custom .row-item{
       flex:1;
       display:flex;
       flex-direction:column;
       gap:4px;
     }
+
     .range-custom .row-item label{
       font-size:13px;
       color:var(--muted);
+    }
+
+    .multi-select{
+      position:relative;
+      width:100%;
+    }
+
+    .multi-select-btn{
+      width:100%;
+      min-height:42px;
+      padding:8px 40px 8px 12px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:#f9fafb;
+      color:var(--text);
+      font-size:14px;
+      text-align:left;
+      cursor:pointer;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      position:relative;
+    }
+
+    .multi-select-btn::after{
+      content:"⌄";
+      position:absolute;
+      right:12px;
+      top:50%;
+      transform:translateY(-55%);
+      font-size:18px;
+      color:var(--muted);
+    }
+
+    .multi-select.open .multi-select-btn{
+      border-color:var(--accent);
+      box-shadow:0 0 0 1px var(--accent-soft);
+      background:#fff;
+    }
+
+    .multi-select-menu{
+      display:none;
+      position:absolute;
+      left:0;
+      right:0;
+      top:calc(100% + 6px);
+      z-index:50;
+      background:#fff;
+      border:1px solid var(--border);
+      border-radius:12px;
+      box-shadow:0 18px 35px rgba(15,23,42,0.16);
+      max-height:320px;
+      overflow:auto;
+      padding:10px 0;
+    }
+
+    .multi-select.open .multi-select-menu{
+      display:block;
+    }
+
+    .multi-option{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px 14px;
+      font-size:14px;
+      cursor:pointer;
+      user-select:none;
+      color:var(--text);
+    }
+
+    .multi-option:hover{
+      background:#eff6ff;
+    }
+
+    .multi-option input{
+      width:18px;
+      height:18px;
+      cursor:pointer;
     }
 
     .status{
@@ -170,17 +266,21 @@
       gap:6px;
       color:var(--muted);
     }
+
     .status-dot{
-      width:8px;height:8px;
+      width:8px;
+      height:8px;
       border-radius:999px;
       background:var(--muted);
     }
-    .status.ok   {color:#059669;}
-    .status.warn {color:var(--warn);}
-    .status.err  {color:var(--err);}
-    .status.ok   .status-dot{background:#22c55e;}
+
+    .status.ok{color:#059669;}
+    .status.warn{color:var(--warn);}
+    .status.err{color:var(--err);}
+
+    .status.ok .status-dot{background:#22c55e;}
     .status.warn .status-dot{background:var(--warn);}
-    .status.err  .status-dot{background:var(--err);}
+    .status.err .status-dot{background:var(--err);}
 
     .table-wrap{
       margin-top:4px;
@@ -197,23 +297,26 @@
       font-size:14px;
       table-layout:fixed;
     }
+
     thead{
       background:#f9fafb;
     }
+
     th,td{
       padding:8px 10px;
       border-bottom:1px solid var(--border);
     }
+
     th{
       text-align:left;
       font-weight:600;
       font-size:13px;
       color:var(--muted);
     }
+
     tbody tr:nth-child(even){background:var(--panel-soft);}
     tbody tr:hover{background:#eff6ff;}
 
-    /* STT */
     th:nth-child(1),
     td:nth-child(1){
       width:40px;
@@ -221,7 +324,6 @@
       color:var(--muted);
     }
 
-    /* Ngày + Tên KH */
     th:nth-child(2), td:nth-child(2),
     th:nth-child(3), td:nth-child(3){
       width:120px;
@@ -230,7 +332,6 @@
       text-overflow:ellipsis;
     }
 
-    /* Địa chỉ: tối đa 2 dòng */
     .col-diachi{
       display:-webkit-box;
       -webkit-line-clamp:2;
@@ -242,6 +343,7 @@
     .col-date-main{
       display:block;
     }
+
     .col-date-time{
       display:block;
       font-size:12px;
@@ -249,25 +351,70 @@
       margin-top:2px;
     }
 
+    .pagination-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-top:10px;
+      padding:10px 2px;
+    }
+
+    .page-btn{
+      border:1px solid var(--border);
+      background:#ffffff;
+      color:var(--accent);
+      border-radius:999px;
+      padding:8px 12px;
+      font-size:13px;
+      cursor:pointer;
+      font-weight:500;
+      white-space:nowrap;
+    }
+
+    .page-btn:hover{
+      background:#eff6ff;
+      border-color:var(--accent);
+    }
+
+    .page-btn:disabled{
+      opacity:.45;
+      cursor:default;
+      background:#f9fafb;
+      color:var(--muted);
+      border-color:var(--border);
+    }
+
+    .page-info{
+      font-size:13px;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+
     @media (max-width:640px){
       .wrap{
         margin:8px auto 16px;
         padding:0 8px;
       }
+
       .top-bar{
         flex-direction:column;
         align-items:flex-start;
         gap:6px;
       }
+
       .top-left h1{
         font-size:20px;
       }
+
       .top-right{
         align-self:stretch;
         justify-content:flex-end;
+        gap:8px;
       }
-      .btn-map{
-        width:100%;
+
+      .top-right .btn{
+        flex:1;
         justify-content:center;
         padding-inline:12px;
       }
@@ -276,89 +423,128 @@
         padding:10px 10px;
         border-radius:14px;
       }
+
       .filter-item{
         min-width:100%;
         flex:1 1 100%;
       }
+
       .filter-actions{
         align-items:center;
       }
+
       .filter-item select,
       .filter-item input{
         font-size:13px;
         padding:7px 9px;
       }
+
       .range-presets{
         gap:4px;
       }
+
       .range-pill{
         padding:5px 8px;
         font-size:11px;
+      }
+
+      .multi-select-menu{
+        max-height:300px;
       }
 
       .status{
         font-size:12px;
         margin-top:6px;
       }
+
       .table-wrap{
         border-radius:14px;
       }
+
       table{
         font-size:13px;
       }
+
       th,td{
         padding:7px 8px;
+      }
+
+      .pagination-bar{
+        gap:6px;
+      }
+
+      .page-btn{
+        padding:7px 10px;
+        font-size:12px;
+      }
+
+      .page-info{
+        font-size:12px;
       }
     }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <header class="top-bar">
       <div class="top-left">
         <h1>Báo cáo check-in</h1>
       </div>
+
       <div class="top-right">
-        <button id="btnMap" class="btn btn-map">
+        <button id="btnFilter" class="btn" type="button">
+          Lọc dữ liệu
+        </button>
+
+        <button id="btnMap" class="btn btn-map" type="button">
           📍 <span>Xem bản đồ</span>
         </button>
       </div>
     </header>
 
     <section class="filter-bar">
-      <!-- Lọc nhân viên -->
       <div class="filter-item">
-        <label for="maNvSelect">Nhân viên (ma_nv)</label>
-        <select id="maNvSelect">
-          <option value="">-- Tất cả nhân viên --</option>
-        </select>
+        <label>Nhân viên</label>
+
+        <div class="multi-select" id="maNvMulti">
+          <button type="button" class="multi-select-btn" id="maNvMultiBtn">
+            Tất cả nhân viên
+          </button>
+
+          <div class="multi-select-menu" id="maNvMultiMenu">
+            <label class="multi-option">
+              <input type="checkbox" id="maNvAllCheck" checked />
+              <span>Tất cả nhân viên</span>
+            </label>
+
+            <div id="maNvOptionList"></div>
+          </div>
+        </div>
       </div>
 
-      <!-- Lọc thời gian -->
       <div class="filter-item">
         <label>Thời gian</label>
+
         <div class="range-presets">
-          <button class="range-pill" data-range="today">Hôm nay</button>
-          <button class="range-pill" data-range="yesterday">Hôm qua</button>
-          <button class="range-pill" data-range="7d">7 ngày qua</button>
-          <button class="range-pill" data-range="30d">30 ngày qua</button>
-          <button class="range-pill" data-range="custom">Tùy chọn</button>
+          <button type="button" class="range-pill" data-range="today">Hôm nay</button>
+          <button type="button" class="range-pill" data-range="yesterday">Hôm qua</button>
+          <button type="button" class="range-pill" data-range="7d">7 ngày qua</button>
+          <button type="button" class="range-pill" data-range="30d">30 ngày qua</button>
+          <button type="button" class="range-pill" data-range="custom">Tùy chọn</button>
         </div>
+
         <div class="range-custom">
           <div class="row-item">
             <label for="fromDate">Từ:</label>
             <input type="date" id="fromDate" />
           </div>
+
           <div class="row-item">
             <label for="toDate">Đến:</label>
             <input type="date" id="toDate" />
           </div>
         </div>
-      </div>
-
-      <!-- Nút lọc -->
-      <div class="filter-item filter-actions">
-        <button id="btnFilter" class="btn">Lọc dữ liệu</button>
       </div>
     </section>
 
@@ -380,38 +566,79 @@
         <tbody id="tbodyKh"></tbody>
       </table>
     </section>
+
+    <div class="pagination-bar">
+      <button id="btnPrevPage" class="page-btn" type="button">← Trang trước</button>
+      <span id="pageInfo" class="page-info">Trang 1 / 1</span>
+      <button id="btnNextPage" class="page-btn" type="button">Trang sau →</button>
+    </div>
   </div>
 
   <script>
     const CFG_CACHE_KEY    = 'nv_checkin_cfg_v5';
-    const FILTER_CACHE_KEY = 'nv_checkin_filters_v1';
+    const FILTER_CACHE_KEY = 'nv_checkin_filters_v2';
     const ROW_CACHE_KEY    = 'nv_checkin_last_rows';
+
+    const PAGE_SIZE = 100;
+
+    let supa = null;
+    let nhanVienOptions = [];
+    let selectedMaNvList = [];
+
+    let currentPage = 1;
+    let totalRows = 0;
+    let totalPages = 1;
+
+    const $ = s => document.querySelector(s);
+
+    const maNvMulti      = $('#maNvMulti');
+    const maNvMultiBtn   = $('#maNvMultiBtn');
+    const maNvMultiMenu  = $('#maNvMultiMenu');
+    const maNvAllCheck   = $('#maNvAllCheck');
+    const maNvOptionList = $('#maNvOptionList');
+
+    const btnFilter  = $('#btnFilter');
+    const btnMap     = $('#btnMap');
+    const tbody      = $('#tbodyKh');
+    const fromDateEl = $('#fromDate');
+    const toDateEl   = $('#toDate');
+    const presetBtns = document.querySelectorAll('.range-pill');
+
+    const btnPrevPage = $('#btnPrevPage');
+    const btnNextPage = $('#btnNextPage');
+    const pageInfo    = $('#pageInfo');
 
     function setStatus(text, mode){
       const box = document.getElementById('status');
       if(!box) return;
+
       const dot = box.querySelector('.status-dot');
       const spans = box.querySelectorAll('span');
-      const msgSpan = spans[spans.length-1];
+      const msgSpan = spans[spans.length - 1];
+
       if(msgSpan) msgSpan.textContent = text;
 
       box.classList.remove('ok','warn','err');
       if(mode) box.classList.add(mode);
 
       if(dot){
-        if(mode === 'ok')         dot.style.background = '#22c55e';
-        else if(mode === 'warn')  dot.style.background = '#f59e0b';
-        else if(mode === 'err')   dot.style.background = '#ef4444';
-        else                      dot.style.background = '#9ca3af';
+        if(mode === 'ok') dot.style.background = '#22c55e';
+        else if(mode === 'warn') dot.style.background = '#f59e0b';
+        else if(mode === 'err') dot.style.background = '#ef4444';
+        else dot.style.background = '#9ca3af';
       }
     }
 
     async function getSbConfig(){
       try{
         const raw = localStorage.getItem(CFG_CACHE_KEY);
+
         if(raw){
           const c = JSON.parse(raw);
-          if(c && c.url && (c.anon || c.role)) return c;
+
+          if(c && c.url && (c.anon || c.role)){
+            return c;
+          }
         }
       }catch(_){}
 
@@ -420,17 +647,23 @@
         : '';
 
       const resp = await fetch('/api/getConfig', {
-        headers: { 'x-internal-key': keyHeader }
+        headers: {
+          'x-internal-key': keyHeader
+        }
       });
 
-      if(!resp.ok) throw new Error('Không lấy được config hệ thống');
+      if(!resp.ok){
+        throw new Error('Không lấy được config hệ thống');
+      }
 
       const cfg = await resp.json();
+
       const result = {
-        url:  cfg.url,
+        url: cfg.url,
         anon: cfg.anon,
         role: cfg.role || null
       };
+
       if(!result.url || !(result.anon || result.role)){
         throw new Error('Config thiếu url / apiKey');
       }
@@ -442,27 +675,21 @@
       return result;
     }
 
-    let supa = null;
     async function ensureSupa(){
       if(supa) return supa;
+
       const cfg = await getSbConfig();
       const apiKey = cfg.role || cfg.anon;
+
       supa = window.supabase.createClient(cfg.url, apiKey, {
-        auth: { persistSession:false }
+        auth: {
+          persistSession:false
+        }
       });
+
       return supa;
     }
 
-    const $  = s => document.querySelector(s);
-    const maNvSelect  = $('#maNvSelect');
-    const btnFilter   = $('#btnFilter');
-    const btnMap      = $('#btnMap');
-    const tbody       = $('#tbodyKh');
-    const fromDateEl  = $('#fromDate');
-    const toDateEl    = $('#toDate');
-    const presetBtns  = document.querySelectorAll('.range-pill');
-
-    // ====== LƯU / KHÔI PHỤC BỘ LỌC ======
     function getActivePresetKey(){
       const btn = document.querySelector('.range-pill.active');
       return btn ? btn.dataset.range : '';
@@ -471,12 +698,14 @@
     function saveFilters(presetOverride){
       try{
         const activePreset = presetOverride || getActivePresetKey() || '';
+
         const state = {
-          ma_nv : maNvSelect.value || '',
-          from  : fromDateEl.value || '',
-          to    : toDateEl.value   || '',
+          ma_nv_list: selectedMaNvList || [],
+          from: fromDateEl.value || '',
+          to: toDateEl.value || '',
           preset: activePreset
         };
+
         localStorage.setItem(FILTER_CACHE_KEY, JSON.stringify(state));
       }catch(_){}
     }
@@ -485,156 +714,120 @@
       try{
         const raw = localStorage.getItem(FILTER_CACHE_KEY);
         if(!raw) return false;
+
         const s = JSON.parse(raw);
         if(!s) return false;
 
-        if(typeof s.ma_nv === 'string') maNvSelect.value = s.ma_nv;
-        if(typeof s.from === 'string')  fromDateEl.value = s.from || '';
-        if(typeof s.to === 'string')    toDateEl.value   = s.to   || '';
+        if(Array.isArray(s.ma_nv_list)){
+          selectedMaNvList = s.ma_nv_list
+            .map(x => String(x || '').trim())
+            .filter(Boolean);
+        }else if(typeof s.ma_nv === 'string' && s.ma_nv){
+          selectedMaNvList = [s.ma_nv];
+        }else{
+          selectedMaNvList = [];
+        }
+
+        if(typeof s.from === 'string'){
+          fromDateEl.value = s.from || '';
+        }
+
+        if(typeof s.to === 'string'){
+          toDateEl.value = s.to || '';
+        }
 
         presetBtns.forEach(b => b.classList.remove('active'));
+
         if(s.preset){
           const btn = document.querySelector(`.range-pill[data-range="${s.preset}"]`);
           if(btn) btn.classList.add('active');
         }
+
+        renderNhanVienChecks();
+        updateNhanVienButtonText();
+
         return true;
       }catch(_){
         return false;
       }
     }
 
-    // yyyy-mm-dd -> dd/MM/yyyy
     function ymdToDmy(ymd){
       if(!ymd || !ymd.includes('-')) return '';
+
       const [y,m,d] = ymd.split('-');
       return `${d}/${m}/${y}`;
     }
 
-    // tạo danh sách yyyy-mm-dd từ from..to
     function listDates(fromYmd, toYmd){
       const res = [];
+
       if(!fromYmd || !toYmd) return res;
+
       let d = new Date(fromYmd);
       const end = new Date(toYmd);
+
       if(isNaN(d) || isNaN(end)) return res;
+
       while(d <= end){
         const yyyy = d.getFullYear();
-        const mm   = String(d.getMonth()+1).padStart(2,'0');
-        const dd   = String(d.getDate()).padStart(2,'0');
+        const mm = String(d.getMonth() + 1).padStart(2,'0');
+        const dd = String(d.getDate()).padStart(2,'0');
+
         res.push(`${yyyy}-${mm}-${dd}`);
-        d.setDate(d.getDate()+1);
+
+        d.setDate(d.getDate() + 1);
       }
+
       return res;
     }
 
     function applyPreset(key){
       const today = new Date();
       let start = new Date(today);
-      let end   = new Date(today);
+      let end = new Date(today);
 
       if(key === 'yesterday'){
-        start.setDate(start.getDate()-1);
-        end.setDate(end.getDate()-1);
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
       }else if(key === '7d'){
-        start.setDate(start.getDate()-6);
+        start.setDate(start.getDate() - 6);
       }else if(key === '30d'){
-        start.setDate(start.getDate()-29);
+        start.setDate(start.getDate() - 29);
       }else if(key === 'custom'){
         return;
       }
 
       const fmtYmd = d => {
         const yyyy = d.getFullYear();
-        const mm   = String(d.getMonth()+1).padStart(2,'0');
-        const dd   = String(d.getDate()).padStart(2,'0');
+        const mm = String(d.getMonth() + 1).padStart(2,'0');
+        const dd = String(d.getDate()).padStart(2,'0');
+
         return `${yyyy}-${mm}-${dd}`;
       };
 
       fromDateEl.value = fmtYmd(start);
-      toDateEl.value   = fmtYmd(end);
+      toDateEl.value = fmtYmd(end);
     }
 
     function setActivePreset(btn){
       presetBtns.forEach(b => b.classList.remove('active'));
-      if(btn) btn.classList.add('active');
+
+      if(btn){
+        btn.classList.add('active');
+      }
     }
-
-    (async function init(){
-      try{
-        await ensureSupa();
-        setStatus('✅ Supabase sẵn sàng.', 'ok');
-      }catch(e){
-        console.error(e);
-        setStatus('❌ Không thể kết nối Supabase: ' + (e.message || e), 'err');
-        return;
-      }
-
-      await loadMaNvOptions();
-
-      // Nếu có filter cũ thì dùng lại, không thì mặc định Hôm nay
-      const restored = restoreFilters();
-      if(!restored){
-        const todayBtn = document.querySelector('.range-pill[data-range="today"]');
-        applyPreset('today');
-        setActivePreset(todayBtn);
-      }
-
-      // Sự kiện preset
-      presetBtns.forEach(btn=>{
-        btn.addEventListener('click', ()=>{
-          const key = btn.dataset.range;
-          setActivePreset(btn);
-          applyPreset(key);
-          saveFilters(key);
-          if(key !== 'custom'){
-            fetchData();
-          }
-        });
-      });
-
-      // Nút Lọc
-      btnFilter.addEventListener('click', ()=>{
-        saveFilters();
-        fetchData();
-      });
-
-      // Đổi nhân viên -> lọc luôn
-      maNvSelect.addEventListener('change', ()=>{
-        saveFilters();
-        fetchData();
-      });
-
-      // Đổi ngày -> chuyển sang "Tùy chọn", chưa auto lọc
-      fromDateEl.addEventListener('change', ()=>{
-        const customBtn = document.querySelector('.range-pill[data-range="custom"]');
-        setActivePreset(customBtn);
-        saveFilters('custom');
-      });
-      toDateEl.addEventListener('change', ()=>{
-        const customBtn = document.querySelector('.range-pill[data-range="custom"]');
-        setActivePreset(customBtn);
-        saveFilters('custom');
-      });
-
-      // Nút Mở bản đồ: chỉ đi sang bando_checkin, map sẽ đọc dữ liệu đã lưu
-      btnMap.addEventListener('click', () => {
-        // đảm bảo filter hiện tại đã lưu
-        saveFilters();
-        location.href = 'bando_checkin.html';
-      });
-
-      // Lần đầu vào cũng load dữ liệu theo filter hiện tại
-      await fetchData();
-    })();
 
     async function loadMaNvOptions(){
       const sb = await ensureSupa();
-      setStatus('Đang tải danh sách nhân viên...', 'warn');
+
+      setStatus('Đang tải danh sách nhân viên từ kv_nhan_vien...', 'warn');
 
       const { data, error } = await sb
-        .from('nv_checkin')
+        .from('kv_nhan_vien')
         .select('ma_nv,ten_nv')
-        .not('ma_nv','is',null);
+        .not('ma_nv','is',null)
+        .order('ten_nv', { ascending:true });
 
       if(error){
         console.error(error);
@@ -643,105 +836,201 @@
       }
 
       const map = new Map();
+
       (data || []).forEach(r => {
-        if(!r.ma_nv) return;
-        if(!map.has(r.ma_nv)) map.set(r.ma_nv, r.ten_nv || '');
+        const ma = String(r.ma_nv || '').trim();
+        const ten = String(r.ten_nv || '').trim();
+
+        if(!ma) return;
+
+        if(!map.has(ma)){
+          map.set(ma, ten);
+        }
       });
 
-      maNvSelect.innerHTML = '<option value="">-- Tất cả nhân viên --</option>';
-      for(const [ma, ten] of map.entries()){
-        const opt = document.createElement('option');
-        opt.value = ma;
-        opt.textContent = ten ? `${ma} - ${ten}` : ma;
-        maNvSelect.appendChild(opt);
-      }
+      nhanVienOptions = Array.from(map.entries()).map(([ma_nv, ten_nv]) => ({
+        ma_nv,
+        ten_nv
+      }));
+
+      renderNhanVienChecks();
+      updateNhanVienButtonText();
 
       setStatus('Supabase sẵn sàng. Mời chọn thời gian / nhân viên.', 'ok');
     }
 
-    async function fetchData(){
-      const sb  = await ensureSupa();
-      const nv  = maNvSelect.value;
+    function renderNhanVienChecks(){
+      maNvOptionList.innerHTML = '';
 
+      nhanVienOptions.forEach(nv => {
+        const label = document.createElement('label');
+        label.className = 'multi-option';
+
+        const checked = selectedMaNvList.includes(nv.ma_nv) ? 'checked' : '';
+        const tenHienThi = nv.ten_nv || 'Chưa có tên';
+
+        label.innerHTML = `
+          <input type="checkbox" class="ma-nv-check" value="${escapeHtml(nv.ma_nv)}" ${checked} />
+          <span>${escapeHtml(tenHienThi)}</span>
+        `;
+
+        maNvOptionList.appendChild(label);
+      });
+
+      updateAllCheckState();
+    }
+
+    function updateNhanVienButtonText(){
+      if(!selectedMaNvList.length){
+        maNvMultiBtn.textContent = 'Tất cả nhân viên';
+        return;
+      }
+
+      const names = selectedMaNvList.map(ma => {
+        const found = nhanVienOptions.find(x => x.ma_nv === ma);
+        return found ? (found.ten_nv || 'Chưa có tên') : 'Chưa có tên';
+      });
+
+      maNvMultiBtn.textContent = names.join(', ');
+    }
+
+    function updateAllCheckState(){
+      if(!maNvAllCheck) return;
+      maNvAllCheck.checked = selectedMaNvList.length === 0;
+    }
+
+    function updatePaginationUI(){
+      totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+
+      if(currentPage > totalPages){
+        currentPage = totalPages;
+      }
+
+      if(pageInfo){
+        pageInfo.textContent = `Trang ${currentPage} / ${totalPages}`;
+      }
+
+      if(btnPrevPage){
+        btnPrevPage.disabled = currentPage <= 1;
+      }
+
+      if(btnNextPage){
+        btnNextPage.disabled = currentPage >= totalPages;
+      }
+    }
+
+    function escapeHtml(value){
+      return String(value ?? '')
+        .replaceAll('&','&amp;')
+        .replaceAll('<','&lt;')
+        .replaceAll('>','&gt;')
+        .replaceAll('"','&quot;')
+        .replaceAll("'","&#039;");
+    }
+
+    async function fetchData(){
+      const sb = await ensureSupa();
+
+      const nvList = selectedMaNvList || [];
       const fYmd = fromDateEl.value;
       const tYmd = toDateEl.value;
+
+      const fromIndex = (currentPage - 1) * PAGE_SIZE;
+      const toIndex = fromIndex + PAGE_SIZE - 1;
 
       setStatus('Đang tải dữ liệu từ nv_checkin...', 'warn');
       btnFilter.disabled = true;
 
       try{
-        let q = sb.from('nv_checkin').select('*').order('ngay',{ascending:false});
+        let q = sb
+          .from('nv_checkin')
+          .select('*', { count:'exact' })
+          .order('ngay', { ascending:false })
+          .range(fromIndex, toIndex);
 
         const days = listDates(fYmd, tYmd);
 
         if(days.length === 1){
-          const d = ymdToDmy(days[0]); // dd/MM/yyyy
+          const d = ymdToDmy(days[0]);
           q = q.like('ngay', d + '%');
         }else if(days.length > 1){
           const orStr = days.map(d => {
             const ddmmyyyy = ymdToDmy(d);
             return `ngay.like.${ddmmyyyy}%`;
           }).join(',');
+
           q = q.or(orStr);
         }
 
-        if(nv){
-          q = q.eq('ma_nv', nv);
+        if(nvList.length > 0){
+          q = q.in('ma_nv', nvList);
         }
 
-        const { data, error } = await q;
+        const { data, error, count } = await q;
 
         if(error){
           console.error(error);
           tbody.innerHTML = '';
+          totalRows = 0;
+          updatePaginationUI();
           setStatus('⚠️ Lỗi truy vấn nv_checkin: ' + error.message, 'err');
           return;
         }
 
-        // 👉 Lưu lại rows cho bản đồ dùng
+        totalRows = count || 0;
+        updatePaginationUI();
+
         try{
           localStorage.setItem(ROW_CACHE_KEY, JSON.stringify(data || []));
         }catch(_){}
 
-        renderRows(data || []);
-        setStatus(`Đang hiển thị ${(data || []).length} dòng check-in.`, 'ok');
+        renderRows(data || [], fromIndex);
+
+        setStatus(
+          `Đang hiển thị ${(data || []).length} / ${totalRows} dòng check-in.`,
+          'ok'
+        );
       }finally{
         btnFilter.disabled = false;
       }
     }
 
-    function renderRows(rows){
+    function renderRows(rows, startIndex = 0){
       tbody.innerHTML = '';
 
       if(!rows.length){
         const tr = document.createElement('tr');
         const td = document.createElement('td');
+
         td.colSpan = 4;
         td.textContent = 'Không có dữ liệu.';
         td.style.textAlign = 'center';
         td.style.color = '#9ca3af';
+
         tr.appendChild(td);
         tbody.appendChild(tr);
+
         return;
       }
 
-      rows.forEach((r,idx)=>{
-        const tr  = document.createElement('tr');
+      rows.forEach((r, idx) => {
+        const tr = document.createElement('tr');
+
         const td1 = document.createElement('td');
         const td2 = document.createElement('td');
         const td3 = document.createElement('td');
         const td4 = document.createElement('td');
 
-        td1.textContent = idx + 1;
+        td1.textContent = startIndex + idx + 1;
 
         const ngayRaw = r.ngay || '';
-        const parts   = ngayRaw.split(' ');
-        const dayPart  = parts[0] || '';
+        const parts = ngayRaw.split(' ');
+        const dayPart = parts[0] || '';
         const timePart = parts[1] || '';
 
         td2.innerHTML =
-          `<span class="col-date-main">${dayPart}</span>` +
-          (timePart ? `<span class="col-date-time">${timePart}</span>` : '');
+          `<span class="col-date-main">${escapeHtml(dayPart)}</span>` +
+          (timePart ? `<span class="col-date-time">${escapeHtml(timePart)}</span>` : '');
 
         const tenKh = r.ten_kh || r.ma_kh || '';
         td3.textContent = tenKh;
@@ -753,9 +1042,148 @@
         tr.appendChild(td2);
         tr.appendChild(td3);
         tr.appendChild(td4);
+
         tbody.appendChild(tr);
       });
     }
+
+    function bindNhanVienMultiSelectEvents(){
+      maNvMultiBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        maNvMulti.classList.toggle('open');
+      });
+
+      maNvMultiMenu.addEventListener('click', e => {
+        e.stopPropagation();
+      });
+
+      maNvAllCheck.addEventListener('change', () => {
+        if(maNvAllCheck.checked){
+          selectedMaNvList = [];
+
+          document.querySelectorAll('.ma-nv-check').forEach(chk => {
+            chk.checked = false;
+          });
+
+          currentPage = 1;
+          updateNhanVienButtonText();
+          updateAllCheckState();
+          saveFilters();
+          fetchData();
+        }
+      });
+
+      maNvOptionList.addEventListener('change', e => {
+        const target = e.target;
+
+        if(!(target instanceof HTMLInputElement)) return;
+        if(!target.classList.contains('ma-nv-check')) return;
+
+        const ma = String(target.value || '').trim();
+
+        if(target.checked){
+          if(!selectedMaNvList.includes(ma)){
+            selectedMaNvList.push(ma);
+          }
+        }else{
+          selectedMaNvList = selectedMaNvList.filter(x => x !== ma);
+        }
+
+        currentPage = 1;
+        updateNhanVienButtonText();
+        updateAllCheckState();
+        saveFilters();
+        fetchData();
+      });
+
+      document.addEventListener('click', () => {
+        maNvMulti.classList.remove('open');
+      });
+    }
+
+    function bindPaginationEvents(){
+      btnPrevPage.addEventListener('click', () => {
+        if(currentPage <= 1) return;
+
+        currentPage -= 1;
+        fetchData();
+      });
+
+      btnNextPage.addEventListener('click', () => {
+        if(currentPage >= totalPages) return;
+
+        currentPage += 1;
+        fetchData();
+      });
+    }
+
+    async function init(){
+      try{
+        await ensureSupa();
+        setStatus('✅ Supabase sẵn sàng.', 'ok');
+      }catch(e){
+        console.error(e);
+        setStatus('❌ Không thể kết nối Supabase: ' + (e.message || e), 'err');
+        return;
+      }
+
+      bindNhanVienMultiSelectEvents();
+      bindPaginationEvents();
+
+      await loadMaNvOptions();
+
+      const restored = restoreFilters();
+
+      if(!restored){
+        const todayBtn = document.querySelector('.range-pill[data-range="today"]');
+        applyPreset('today');
+        setActivePreset(todayBtn);
+      }
+
+      presetBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.range;
+
+          setActivePreset(btn);
+          applyPreset(key);
+          saveFilters(key);
+
+          if(key !== 'custom'){
+            currentPage = 1;
+            fetchData();
+          }
+        });
+      });
+
+      btnFilter.addEventListener('click', () => {
+        currentPage = 1;
+        saveFilters();
+        fetchData();
+      });
+
+      fromDateEl.addEventListener('change', () => {
+        const customBtn = document.querySelector('.range-pill[data-range="custom"]');
+
+        setActivePreset(customBtn);
+        saveFilters('custom');
+      });
+
+      toDateEl.addEventListener('change', () => {
+        const customBtn = document.querySelector('.range-pill[data-range="custom"]');
+
+        setActivePreset(customBtn);
+        saveFilters('custom');
+      });
+
+      btnMap.addEventListener('click', () => {
+        saveFilters();
+        location.href = 'bando_checkin.html';
+      });
+
+      await fetchData();
+    }
+
+    init();
   </script>
 </body>
 </html>
