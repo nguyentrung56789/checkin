@@ -556,20 +556,26 @@ btnShot && (btnShot.onclick = async ()=>{
     if (MA_KH) targetUrl.searchParams.set('ma_kh', MA_KH);
     if (MA_HD) targetUrl.searchParams.set('ma_hd', MA_HD);
 
-    targetUrl.searchParams.set('img', 'session');
+targetUrl.searchParams.set('img', 'session');
 
-    /*
-      Mỗi lần chụp ảnh mới từ app_checkin,
-      mở lại danh sách KH mới.
+/*
+  Mỗi lần chụp ảnh mới từ app_checkin,
+  tạo shot_id mới để trang checkin_khach_hang biết đây là lượt chụp mới.
+*/
+const shotId = String(Date.now());
+targetUrl.searchParams.set('shot_id', shotId);
+sessionStorage.setItem('CHECKIN_CURRENT_SHOT_ID', shotId);
 
-      Xóa khóa tạm của nút Mã KH trên chính trình duyệt/tab hiện tại.
-      Như vậy khi mở checkin_khach_hang.html:
-      - Các nút Mã KH sẽ hiện lại bình thường.
-      - Chỉ những KH đã check-in cùng ngày theo dữ liệu thật mới bị mờ.
-    */
-    sessionStorage.removeItem('CLICKED_CHECKIN_BROWSER_V1');
+/*
+  Xóa toàn bộ khóa tạm của nút Mã KH trên chính trình duyệt/tab hiện tại.
+  Khi mở checkin_khach_hang.html:
+  - Các nút Mã KH sẽ hiện lại bình thường.
+  - Chỉ những KH đã check-in cùng ngày theo dữ liệu thật mới bị mờ.
+*/
+sessionStorage.removeItem('CLICKED_CHECKIN_BROWSER_V1');
+sessionStorage.removeItem('CHECKIN_BROWSER_DONE_V1');
 
-    location.assign(targetUrl.toString());
+location.assign(targetUrl.toString());
 
   } catch (err) {
     console.error(err);
