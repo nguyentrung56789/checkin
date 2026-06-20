@@ -102,7 +102,7 @@
       box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
     }
 
-    /* Chỉ làm popup rộng hơn để hiện nút, không đụng marker */
+    /* Chỉ để popup đủ rộng cho nút chỉ đường */
     .leaflet-popup-content{
       min-width:240px;
     }
@@ -195,11 +195,15 @@
     const stt = i+1;
     const isGreen = r.Da_mua_hang ? true : false;
 
+    // GIỮ NGUYÊN MARKER NHƯ BAN ĐẦU
     const icon = L.divIcon({
       html:`<div class="${isGreen?'mk-green':'mk-red'}">${stt}</div>`,
       iconSize:[26,26],
       iconAnchor:[13,13]
     });
+
+    // CHỈ THÊM LINK CHỈ ĐƯỜNG GOOGLE MAP
+    const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
       <b>${r.ten_kh || "Không tên"}</b><br>
@@ -210,7 +214,7 @@
       Đã mua: <b>${r.Da_mua_hang?'✔ Có':'✘ Không'}</b>
 
       <br><br>
-      <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}"
+      <a href="${googleMapLink}"
          target="_blank"
          rel="noopener"
          style="
