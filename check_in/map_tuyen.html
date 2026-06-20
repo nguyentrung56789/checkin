@@ -207,6 +207,13 @@
   const data = await fetchAllRows();
   console.log("Tổng rows lấy được:", data.length);
 
+  // ===== TÍNH TỔNG SỐ LẦN CHECK-IN =====
+  const tongCheckin = data.reduce((sum, r) => {
+    return sum + toNumber(r.checkin_thang, 0);
+  }, 0);
+
+  console.log("Tổng số lần check-in:", tongCheckin);
+
   let points = [];
   let markers = [];
 
@@ -236,6 +243,7 @@
       Địa chỉ: ${r.dia_chi || ""}<br>
       ĐT: ${r.dien_thoai || ""}<br>
       NV: ${r.ten_nv || r.ma_nv || ""}<br>
+      Tổng check-in: <b>${tongCheckin}</b><br>
       Checkin tháng: <b>${toNumber(r.checkin_thang, 0)}</b><br>
       Cấp độ: <b>${level}</b><br>
       Màu: <b>${
