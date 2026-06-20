@@ -27,10 +27,12 @@
       height:100%;
     }
 
+    /* Bỏ nút + - */
     .leaflet-control-zoom{
       display:none !important;
     }
 
+    /* Thanh điều khiển */
     .top-controls{
       position:fixed;
       top:10px;
@@ -57,6 +59,7 @@
       background:white;
     }
 
+    /* Nút GPS */
     #gpsBtn{
       width:40px;
       height:40px;
@@ -69,44 +72,52 @@
       box-shadow:0 4px 10px rgba(0,0,0,0.3);
       font-size:20px;
       cursor:pointer;
-      flex:0 0 40px;
     }
 
-    .mk-red,
-    .mk-orange,
-    .mk-purple{
+    /* Marker màu đỏ */
+    .mk-red{
+      background:#ef4444;
       color:white;
-      width:26px;
-      height:26px;
+      width:26px;height:26px;
       border-radius:50%;
       display:flex;
       align-items:center;
       justify-content:center;
       border:2px solid white;
       font-weight:600;
-      font-size:12px;
       box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
     }
 
-    .mk-red{ background:#ef4444; }
-    .mk-orange{ background:#f59e0b; }
-    .mk-purple{ background:#8b5cf6; }
+    /* Marker màu xanh */
+    .mk-green{
+      background:#22c55e;
+      color:white;
+      width:26px;height:26px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid white;
+      font-weight:600;
+      box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
+    }
+
   </style>
 </head>
 
 <body>
 
+<!-- ====== THANH LỌC ====== -->
 <div class="top-controls">
+
+  <!-- HÀNG 1: GPS + LỌC MÀU + LỌC NHÂN VIÊN -->
   <div class="row">
     <button id="gpsBtn">📍</button>
 
-    <select id="levelFilter">
+    <select id="colorFilter">
       <option value="">Tất cả</option>
-      <option value="1">1 màu đỏ check in về (chưa có số đt)</option>
-      <option value="2">2 màu cam (đã check in có đt)</option>
-      <option value="3">3 màu tím (nv đã checkin ở tháng này)</option>
-      <option value="buy">Khách đã mua hàng</option>
-      <option value="nobuy">Khách chưa mua hàng</option>
+      <option value="green">Xanh (có mua)</option>
+      <option value="red">Đỏ (chưa mua)</option>
     </select>
 
     <select id="nvFilter">
@@ -114,7 +125,9 @@
     </select>
   </div>
 
+  <!-- HÀNG 2: Ô TÌM KIẾM -->
   <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
+
 </div>
 
 <div id="map"></div>
@@ -122,6 +135,7 @@
 <script>
 (async function(){
 
+  // ================== KẾT NỐI SUPABASE ==================
   const supabase = window.supabase.createClient(
     window.getConfig("url"),
     window.getConfig("role") || window.getConfig("anon"),
@@ -130,193 +144,42 @@
     }
   );
 
+  // ================== TẠO MAP ==================
   const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
     maxZoom:19
   }).addTo(map);
 
-  function toNumber(v, fallback = 0){
-    if (v === null || v === undefined || v === "") return fallback;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  }
-
-  function normalizePhone(v){
-    return String(v || "").replace(/\D/g, "").trim();
-  }
-
-  function isBought(v){
-    if (v === true) return true;
-    if (v === false) return false;
-    const s = String(v || "").trim().toLowerCase();
-    return s === "true" || s === "1" || s === "yes" || s === "đã mua hàng" || s === "da mua hang";
-  }
-
-  function getKHKey(row){
-    return String(row.ma_kh || row.makh || "")
-      .trim()
-      .toUpperCase();
-  }
-
-  function getLevel(row){
-    const hasPhone = normalizePhone(row.dien_thoai) !== "";
-    const checkinMonth = toNumber(row.checkin_thang, 0);
-
-    if (checkinMonth > 0) return "3";
-    if (hasPhone) return "2";
-    return "1";
-  }
-
-  function getColor(row){
-    const level = getLevel(row);
-    if (level === "3") return "purple";
-    if (level === "2") return "orange";
-    return "red";
-  }
-
-  function getMarkerClass(color){
-    if (color === "purple") return "mk-purple";
-    if (color === "orange") return "mk-orange";
-    return "mk-red";
-  }
-
-  function getMarkerLabel(row, index){
-    const n = toNumber(row.checkin_thang, 0);
-    if (n > 0) return n;
-    return index + 1;
-  }
-
-  async function fetchAllRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin_khach_hang")
-        .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang")
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allRows = allRows.concat(data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  async function fetchAllCheckinRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin")
-        .select("ma_kh,makh")
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allRows = allRows.concat(data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  const data = await fetchAllRows();
-  console.log("Tổng rows lấy được:", data.length);
-
-  const checkinHistory = await fetchAllCheckinRows();
-  console.log("Tổng dòng lịch sử check-in:", checkinHistory.length);
-
-  // ===== ĐẾM TỔNG CHECK-IN TỪ TRƯỚC TỚI GIỜ THEO MÃ KH =====
-  // Không lọc ngày. Mỗi dòng nv_checkin = 1 lần check-in.
-  const tongCheckinTheoKH = new Map();
-
-  checkinHistory.forEach(r => {
-    const khKey = getKHKey(r);
-    if (!khKey) return;
-
-    tongCheckinTheoKH.set(
-      khKey,
-      (tongCheckinTheoKH.get(khKey) || 0) + 1
-    );
-  });
-
-  console.log("Tổng check-in theo mã KH:", tongCheckinTheoKH);
+  // ================== LẤY KH ==================
+  const { data } = await supabase.from("nv_checkin_khach_hang").select("*");
 
   let points = [];
   let markers = [];
 
   data.forEach((r,i)=>{
-    const lat = parseFloat(String(r.lat ?? "").trim());
-    const lng = parseFloat(String(r.lng ?? "").trim());
-    if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    if(!r.lat || !r.lng) return;
 
-    const stt = getMarkerLabel(r, i);
-    const level = getLevel(r);
-    const color = getColor(r);
-    const markerClass = getMarkerClass(color);
-    const bought = isBought(r.Da_mua_hang);
+    const lat = parseFloat(r.lat);
+    const lng = parseFloat(r.lng);
+    if(isNaN(lat)||isNaN(lng)) return;
+
+    const stt = i+1;
+    const isGreen = r.Da_mua_hang ? true : false;
 
     const icon = L.divIcon({
-      html:`<div class="${markerClass}">${stt}</div>`,
+      html:`<div class="${isGreen?'mk-green':'mk-red'}">${stt}</div>`,
       iconSize:[26,26],
-      iconAnchor:[13,13],
-      className:""
+      iconAnchor:[13,13]
     });
-
-    const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-
-    const khKey = getKHKey(r);
-    const tongLichSuKH = tongCheckinTheoKH.get(khKey) || 0;
-    const checkinThangKH = toNumber(r.checkin_thang, 0);
-
-    // Tổng từ trước tới giờ không được nhỏ hơn check-in tháng
-    const tongCheckinKH = Math.max(tongLichSuKH, checkinThangKH);
 
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
       <b>${r.ten_kh || "Không tên"}</b><br>
       Mã KH: ${r.ma_kh || ""}<br>
       Địa chỉ: ${r.dia_chi || ""}<br>
       ĐT: ${r.dien_thoai || ""}<br>
-      NV: ${r.ten_nv || r.ma_nv || ""}<br>
-      Tổng check-in KH: <b>${tongCheckinKH}</b><br>
-      Checkin tháng: <b>${checkinThangKH}</b><br>
-      Cấp độ: <b>${level}</b><br>
-      Màu: <b>${
-        color === "purple" ? "Tím" :
-        color === "orange" ? "Cam" :
-        "Đỏ"
-      }</b><br>
-      Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b>
-
-      <br><br>
-      <a href="${googleMapLink}"
-         target="_blank"
-         rel="noopener"
-         style="
-           display:block;
-           padding:10px 12px;
-           background:#2563eb;
-           color:white;
-           text-align:center;
-           border-radius:8px;
-           text-decoration:none;
-           font-weight:700;
-         ">
-         📍 Chỉ đường Google Map
-      </a>
+      NV: ${r.ma_nv || ""}<br>
+      Đã mua: <b>${r.Da_mua_hang?'✔ Có':'✘ Không'}</b>
     `);
 
     mk.addTo(map);
@@ -325,16 +188,11 @@
       stt,
       lat,
       lng,
-      marker: mk,
-      color,
-      level,
-      bought,
-      nvCode: String(r.ma_nv || "").trim(),
-      nvName: String(r.ten_nv || "").trim(),
-      nvPhone: String(r.dien_thoai || "").trim(),
-      row: r
+      marker:mk,
+      color:isGreen ? "green" : "red",
+      nv:r.ma_nv || "",
+      row:r
     });
-
     markers.push(mk);
   });
 
@@ -343,6 +201,7 @@
     map.fitBounds(grp.getBounds(),{padding:[50,50]});
   }
 
+  // ================== GPS ==================
   let userMarker = null;
   let userCircle = null;
   let lastLat = null;
@@ -401,32 +260,28 @@
     }
   };
 
+  // ================== DROPDOWN LỌC NV ==================
   const nvFilter = document.getElementById("nvFilter");
-  const nvMap = new Map();
+  const nvSet = new Set();
 
-  points.forEach(p => {
-    if (!p.nvCode) return;
-
-    if (!nvMap.has(p.nvCode)) {
-      const label = [p.nvCode, p.nvName].filter(Boolean).join(" - ") || p.nvCode;
-      nvMap.set(p.nvCode, label);
-    }
+  points.forEach(p=>{
+    if(!p.nv) return;
+    p.nv.split("_").forEach(nv => nvSet.add(nv.trim()));
   });
 
-  [...nvMap.entries()]
-    .sort((a, b) => a[1].localeCompare(b[1], "vi"))
-    .forEach(([code, label]) => {
-      const opt = document.createElement("option");
-      opt.value = code;
-      opt.textContent = label;
-      nvFilter.appendChild(opt);
-    });
+  nvSet.forEach(nv=>{
+    const opt=document.createElement("option");
+    opt.value=nv;
+    opt.textContent=nv;
+    nvFilter.appendChild(opt);
+  });
 
-  const levelFilter = document.getElementById("levelFilter");
+  // ================== LỌC (MÀU + NHÂN VIÊN + TÌM KIẾM) ==================
+  const colorFilter = document.getElementById("colorFilter");
   const searchBox   = document.getElementById("searchBox");
 
   function applyFilter(){
-    const fLevel = levelFilter.value;
+    const fColor = colorFilter.value;
     const fNV    = nvFilter.value;
     const q      = searchBox.value.trim().toLowerCase();
 
@@ -434,38 +289,30 @@
       const r = p.row;
       let ok = true;
 
-      if (fLevel === "1" || fLevel === "2" || fLevel === "3") {
-        if (p.level !== fLevel) ok = false;
+      // Lọc màu
+      if(fColor && p.color !== fColor) ok = false;
+
+      // Lọc nhân viên (tách theo "_")
+      if(fNV){
+        const nvList = p.nv.split("_").map(x=>x.trim()).filter(Boolean);
+        if(!nvList.includes(fNV)) ok = false;
       }
 
-      if (fLevel === "buy") {
-        if (!p.bought) ok = false;
-      }
-
-      if (fLevel === "nobuy") {
-        if (p.bought) ok = false;
-      }
-
-      if (fNV) {
-        if (p.nvCode !== fNV) ok = false;
-      }
-
+      // Lọc theo từ khoá
       if(q){
         const text = `
           ${r.ma_kh || ""}
           ${r.ten_kh || ""}
           ${r.dia_chi || ""}
           ${r.dien_thoai || ""}
-          ${r.ghi_chu || ""}
+          ${r.ghi_ghu || ""}
           ${r.ma_nv || ""}
-          ${r.ten_nv || ""}
-          ${r.checkin_thang || ""}
-          ${p.bought ? "da mua hang" : "chua mua hang"}
         `.toLowerCase();
 
         if(!text.includes(q)) ok = false;
       }
 
+      // Hiện / ẩn marker
       if(ok){
         if(!map.hasLayer(p.marker)) p.marker.addTo(map);
       }else{
@@ -473,13 +320,14 @@
       }
     });
 
+    // Nếu chỉ còn 1 điểm sau khi lọc → zoom sát
     const remain = points.filter(p => map.hasLayer(p.marker));
     if(remain.length === 1){
       map.setView([remain[0].lat, remain[0].lng], 18);
     }
   }
 
-  levelFilter.onchange = applyFilter;
+  colorFilter.onchange = applyFilter;
   nvFilter.onchange    = applyFilter;
   searchBox.oninput    = applyFilter;
 
