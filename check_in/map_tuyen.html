@@ -207,12 +207,21 @@
   const data = await fetchAllRows();
   console.log("Tổng rows lấy được:", data.length);
 
-  // ===== TÍNH TỔNG SỐ LẦN CHECK-IN =====
-  const tongCheckin = data.reduce((sum, r) => {
-    return sum + toNumber(r.checkin_thang, 0);
-  }, 0);
+  // ===== TỰ CỘNG TỔNG CHECK-IN THEO KHÁCH HÀNG KHI LOAD =====
+  const tongCheckinTheoKH = new Map();
 
-  console.log("Tổng số lần check-in:", tongCheckin);
+  data.forEach(r => {
+    const khKey = String(r.ma_kh || "").trim();
+    if (!khKey) return;
+
+    const current = tongCheckinTheoKH.get(khKey) || 0;
+    tongCheckinTheoKH.set(
+      khKey,
+      current + toNumber(r.checkin_thang, 0)
+    );
+  });
+
+  console.log("Tổng check-in theo KH:", tongCheckinTheoKH);
 
   let points = [];
   let markers = [];
@@ -237,13 +246,16 @@
 
     const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
+    const khKey = String(r.ma_kh || "").trim();
+    const tongCheckinKH = tongCheckinTheoKH.get(khKey) || 0;
+
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
       <b>${r.ten_kh || "Không tên"}</b><br>
       Mã KH: ${r.ma_kh || ""}<br>
       Địa chỉ: ${r.dia_chi || ""}<br>
       ĐT: ${r.dien_thoai || ""}<br>
       NV: ${r.ten_nv || r.ma_nv || ""}<br>
-      Tổng check-in: <b>${tongCheckin}</b><br>
+      Tổng check-in KH: <b>${tongCheckinKH}</b><br>
       Checkin tháng: <b>${toNumber(r.checkin_thang, 0)}</b><br>
       Cấp độ: <b>${level}</b><br>
       Màu: <b>${
