@@ -102,10 +102,6 @@
       box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
     }
 
-    /* Chỉ để popup đủ rộng cho nút chỉ đường */
-    .leaflet-popup-content{
-      min-width:240px;
-    }
   </style>
 </head>
 
@@ -157,30 +153,30 @@
 
   // ================== LẤY KH ==================
   async function fetchAllRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
+  const pageSize = 1000;
+  let from = 0;
+  let allRows = [];
 
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin_khach_hang")
-        .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,Da_mua_hang")
-        .range(from, from + pageSize - 1);
+  while (true) {
+    const { data, error } = await supabase
+      .from("nv_checkin_khach_hang")
+      .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,Da_mua_hang")
+      .range(from, from + pageSize - 1);
 
-      if (error) throw error;
-      if (!data || data.length === 0) break;
+    if (error) throw error;
+    if (!data || data.length === 0) break;
 
-      allRows = allRows.concat(data);
+    allRows = allRows.concat(data);
 
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
+    if (data.length < pageSize) break;
+    from += pageSize;
   }
 
-  const data = await fetchAllRows();
-  console.log("Tổng rows lấy được:", data.length);
+  return allRows;
+}
+
+const data = await fetchAllRows();
+console.log("Tổng rows lấy được:", data.length);
 
   let points = [];
   let markers = [];
@@ -195,15 +191,11 @@
     const stt = i+1;
     const isGreen = r.Da_mua_hang ? true : false;
 
-    // GIỮ NGUYÊN MARKER NHƯ BAN ĐẦU
     const icon = L.divIcon({
       html:`<div class="${isGreen?'mk-green':'mk-red'}">${stt}</div>`,
       iconSize:[26,26],
       iconAnchor:[13,13]
     });
-
-    // CHỈ THÊM LINK CHỈ ĐƯỜNG GOOGLE MAP
-    const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
       <b>${r.ten_kh || "Không tên"}</b><br>
@@ -212,23 +204,6 @@
       ĐT: ${r.dien_thoai || ""}<br>
       NV: ${r.ma_nv || ""}<br>
       Đã mua: <b>${r.Da_mua_hang?'✔ Có':'✘ Không'}</b>
-
-      <br><br>
-      <a href="${googleMapLink}"
-         target="_blank"
-         rel="noopener"
-         style="
-           display:block;
-           padding:10px 12px;
-           background:#2563eb;
-           color:white;
-           text-align:center;
-           border-radius:8px;
-           text-decoration:none;
-           font-weight:700;
-         ">
-         📍 Chỉ đường Google Map
-      </a>
     `);
 
     mk.addTo(map);
