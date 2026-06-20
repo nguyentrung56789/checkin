@@ -228,6 +228,8 @@
       className:""
     });
 
+    const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
       <b>${r.ten_kh || "Không tên"}</b><br>
       Mã KH: ${r.ma_kh || ""}<br>
@@ -242,6 +244,23 @@
         "Đỏ"
       }</b><br>
       Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b>
+
+      <br><br>
+      <a href="${googleMapLink}"
+         target="_blank"
+         rel="noopener"
+         style="
+           display:block;
+           padding:10px 12px;
+           background:#2563eb;
+           color:white;
+           text-align:center;
+           border-radius:8px;
+           text-decoration:none;
+           font-weight:700;
+         ">
+         📍 Chỉ đường Google Map
+      </a>
     `);
 
     mk.addTo(map);
