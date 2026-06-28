@@ -389,7 +389,7 @@ async function getSupabaseLib(){
     $('#modalTitle').textContent = mode==='add' ? 'Thêm khách hàng' : 'Sửa khách hàng';
     $('#f_ma_kh').disabled = (mode==='edit');
     const maKhRow = $('#maKhRow');
-    if (maKhRow) maKhRow.style.display = mode === 'edit' ? 'block' : 'none';
+    if (maKhRow) maKhRow.style.display = 'none';
 
     if (mode==='edit' && row){
       $('#f_ma_kh').value      = row.ma_kh || '';
@@ -737,18 +737,7 @@ async function onMaKHClick(ma_kh){
     if (CURRENT?.mode === 'add'){
       const { error } = await SB
         .from(TABLE)
-        .insert([{
-  ma_kh,
-  ten_kh,
-  dia_chi,
-  phuong_xa,
-  thanh_pho,
-  dien_thoai,
-  lat,
-  lng,
-  ma_nv: AUTH_NV.ma_nv,
-  ten_nv: AUTH_NV.ten_nv || null
-}]);
+        .insert([{ ma_kh, ten_kh, dia_chi, phuong_xa, thanh_pho, dien_thoai, lat, lng }]);
 
       if (error){
         console.error(error);
