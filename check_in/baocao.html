@@ -608,6 +608,45 @@
     const btnNextPage = $('#btnNextPage');
     const pageInfo    = $('#pageInfo');
 
+    const params = new URLSearchParams(location.search);
+    const currentMaNV = String(params.get('ma_nv') || '').trim();
+    const currentTenNV = String(params.get('ten_nv') || '').trim();
+
+    function safeParseStorage(key, storage){
+      try { return JSON.parse(storage.getItem(key) || 'null'); }
+      catch { return null; }
+    }
+
+    function getLoggedNV(){
+      const nv = safeParseStorage('nv', localStorage);
+      if(nv && nv.ma_nv) return nv;
+
+      const ctx = safeParseStorage('nv_ctx', sessionStorage);
+      if(ctx && ctx.ma_nv) return ctx;
+
+      return null;
+    }
+
+    const loggedNV = getLoggedNV();
+
+    if(!currentMaNV){
+      try { alert('Thiếu mã nhân viên. Vui lòng vào từ Trang chính.'); } catch {}
+      location.replace('./main.html');
+      throw new Error('Missing ma_nv');
+    }
+
+    if(!loggedNV || !loggedNV.ma_nv || loggedNV.hoat_dong === false){
+      try { alert('Bạn chưa đăng nhập.'); } catch {}
+      location.replace('./login.html');
+      throw new Error('Not logged in');
+    }
+
+    if(String(loggedNV.ma_nv) !== String(currentMaNV)){
+      try { alert('Mã nhân viên không khớp tài khoản đăng nhập.'); } catch {}
+      location.replace('./main.html');
+      throw new Error('ma_nv mismatch');
+    }
+
     function setStatus(text, mode){
       const box = document.getElementById('status');
       if(!box) return;
@@ -1177,7 +1216,10 @@
 
       btnMap.addEventListener('click', () => {
         saveFilters();
-        location.href = 'bando_checkin.html';
+        const url = new URL('bando_checkin.html', location.href);
+        url.searchParams.set('ma_nv', currentMaNV);
+        url.searchParams.set('ten_nv', currentTenNV || loggedNV.ten_nv || '');
+        location.href = url.toString();
       });
 
       await fetchData();
