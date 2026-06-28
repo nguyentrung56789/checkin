@@ -271,6 +271,44 @@
 <script>
 (async function(){
 
+  const params = new URLSearchParams(location.search);
+  const currentMaNV = String(params.get("ma_nv") || "").trim();
+
+  function safeParseStorage(key, storage){
+    try { return JSON.parse(storage.getItem(key) || "null"); }
+    catch { return null; }
+  }
+
+  function getLoggedNV(){
+    const nv = safeParseStorage("nv", localStorage);
+    if (nv && nv.ma_nv) return nv;
+
+    const ctx = safeParseStorage("nv_ctx", sessionStorage);
+    if (ctx && ctx.ma_nv) return ctx;
+
+    return null;
+  }
+
+  const loggedNV = getLoggedNV();
+
+  if (!currentMaNV) {
+    try { alert("Thiếu mã nhân viên. Vui lòng vào từ Trang chính."); } catch {}
+    location.replace("./main.html");
+    throw new Error("Missing ma_nv");
+  }
+
+  if (!loggedNV || !loggedNV.ma_nv || loggedNV.hoat_dong === false) {
+    try { alert("Bạn chưa đăng nhập."); } catch {}
+    location.replace("./login.html");
+    throw new Error("Not logged in");
+  }
+
+  if (String(loggedNV.ma_nv) !== String(currentMaNV)) {
+    try { alert("Mã nhân viên không khớp tài khoản đăng nhập."); } catch {}
+    location.replace("./main.html");
+    throw new Error("ma_nv mismatch");
+  }
+
   const supabase = window.supabase.createClient(
     window.getConfig("url"),
     window.getConfig("role") || window.getConfig("anon"),
@@ -641,6 +679,14 @@
       Object.assign(localPoint.row, updated);
       localPoint.nvCode = String(updated.ma_nv || "").trim();
       localPoint.nvPhone = String(updated.dien_thoai || "").trim();
+
+      const newLat = parseFloat(String(updated.lat ?? "").trim());
+      const newLng = parseFloat(String(updated.lng ?? "").trim());
+      if (Number.isFinite(newLat) && Number.isFinite(newLng)) {
+        localPoint.lat = newLat;
+        localPoint.lng = newLng;
+        localPoint.marker.setLatLng([newLat, newLng]);
+      }
     }
 
     showEditMsg("ok", "Đã lưu cập nhật");
@@ -781,6 +827,10 @@
   searchBox.oninput = applyFilter;
 
 })().catch(err => {
+  const msg = err && err.message ? err.message : "";
+  if (msg === "Missing ma_nv" || msg === "Not logged in" || msg === "ma_nv mismatch") {
+    return;
+  }
   alert("Lỗi tải bản đồ: " + (err.message || err));
   console.error(err);
 });
