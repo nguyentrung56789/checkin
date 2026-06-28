@@ -177,3 +177,11 @@
   background:#ef4444;
   color:#fff;
 }
+.btn-danger{
+  background:#ef4444;
+  color:#fff;
+}
+
+.btn-danger:hover{
+  filter:brightness(1.08);
+}
