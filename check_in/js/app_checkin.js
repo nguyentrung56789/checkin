@@ -1,896 +1,645 @@
-async function getSupabaseLib(){
-  if (window.supabase?.createClient) return window.supabase;
-  const mod = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm');
-  return mod;
-}
+/* ================== CONFIG ================== */
+const TARGET_W = 900, TARGET_H = 1600;
 
-(async () => {
-  const $  = s => document.querySelector(s);
-  const $$ = s => Array.from(document.querySelectorAll(s));
+/* ===== SHEET so sánh (<=20m) khi bật cam ===== */
+const SHEET_URL = new URLSearchParams(location.search).get('sheet')
+  || 'https://docs.google.com/spreadsheets/d/.../pub?output=csv'; // TODO: thay link CSV của bạn
+const SHEET_TTL_MS = 5 * 60 * 1000;
+const NEAR_RADIUS_M = 20;
+let SHEET_POINTS = [];
+const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
 
-  const toast = (msg,t='')=>{
-    const el = $('#toast');
-    el.textContent = msg;
-    el.style.display = 'block';
-    el.style.borderColor =
-      t==='err' ? '#ef4444' :
-      t==='ok'  ? '#22c55e' :
-                  '#243153';
-    clearTimeout(toast._t);
-    toast._t = setTimeout(()=>el.style.display='none',2200);
+/* ===== Local cache helpers ===== */
+const lsGet = k => { try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null} };
+const lsSet = (k,v) => localStorage.setItem(k, JSON.stringify(v));
+
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if(!lines.length) return [];
+  const headers = lines[0].split(',').map(s=>s.trim().toLowerCase());
+  const id = n => headers.indexOf(n);
+  const pick = (...c)=>{ for(const x of c){ const i=id(x); if(i>=0) return i; } return -1; };
+  const idx = {
+    lat:   pick('lat','latitude','vi_do','vido'),
+    lng:   pick('lng','lon','longitude','kinh_do','kinhdo'),
+    name:  pick('name','ten','tên'),
+    ma_kh: pick('ma_kh','makh','ma','mã'),
+    ma_hd: pick('ma_hd','mahd')
   };
-
-  function escAttr(v){
-    return String(v ?? '')
-      .replace(/&/g,'&amp;')
-      .replace(/"/g,'&quot;')
-      .replace(/</g,'&lt;');
-  }
-
-  function cssEscapeSafe(v){
-    try{
-      return CSS && CSS.escape ? CSS.escape(v) : String(v).replace(/"/g,'\\"');
-    }catch{
-      return String(v).replace(/"/g,'\\"');
-    }
-  }
-
-  const TABLE           = 'nv_checkin_khach_hang';
-  const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
-  const CHECKIN_TABLE   = 'nv_checkin';
-  const CHECKIN_DATE_COL = 'ngay';
-
-  let SB      = null;
-  let CURRENT = null;
-  const pendingCheckins = new Set();
-  let saveBusy = false;
-
-  /*
-    Khóa toàn bộ nút Mã KH trên chính trình duyệt/tab hiện tại
-    sau khi đã bấm check-in thành công/đang gửi.
-
-    Mục tiêu:
-    - Bấm 1 Mã KH là toàn bộ Mã KH mờ ngay.
-    - Nếu bảng refresh/render lại, toàn bộ Mã KH vẫn mờ.
-    - Chỉ khi chụp ảnh mới từ app_checkin.js thì khóa này được xóa.
-  */
-  const CHECKIN_BROWSER_DONE_KEY = 'CHECKIN_BROWSER_DONE_V1';
-
-  let checkinBusy = false;
-
-  function isBrowserCheckinDone(){
-    return sessionStorage.getItem(CHECKIN_BROWSER_DONE_KEY) === '1';
-  }
-
-  function setBrowserCheckinDone(){
-    try{
-      sessionStorage.setItem(CHECKIN_BROWSER_DONE_KEY, '1');
-    }catch{}
-  }
-
-  function clearBrowserCheckinDone(){
-    try{
-      sessionStorage.removeItem(CHECKIN_BROWSER_DONE_KEY);
-    }catch{}
-  }
-
-  function getLatLngFromURL(){
-    const qp = new URLSearchParams(location.search);
-    const latRaw = qp.get('lat') ?? qp.get('latitude');
-    const lngRaw = qp.get('lng') ?? qp.get('long') ?? qp.get('lon') ?? qp.get('longitude');
-    const lat = Number(latRaw), lng = Number(lngRaw);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
-    return null;
-  }
-
-  function initRadiusFromURLOrDefault(){
-    const sel = $('#radiusSelect');
-    const qp = new URLSearchParams(location.search);
-    let r = Number(qp.get('radius'));
-    const rkm = Number(qp.get('radius_km'));
-    if (Number.isFinite(rkm) && rkm > 0) r = rkm * 1000;
-    if (!Number.isFinite(r) || r <= 0) r = 50;
-    if ([20,50,100,500].includes(Math.round(r))){
-      sel.value = String(Math.round(r));
-    } else {
-      sel.value = '50';
-    }
-  }
-
-  function getRadiusFromUI(){
-    const v = Number($('#radiusSelect').value);
-    return Number.isFinite(v) && v > 0 ? v : 50;
-  }
-
-  function cleanPrefix(value){
-    return String(value || '')
-      .replace(/^Phường\s+/i, '')
-      .replace(/^Xã\s+/i, '')
-      .replace(/^Quận\s+/i, '')
-      .replace(/^Huyện\s+/i, '')
-      .replace(/^Thị xã\s+/i, '')
-      .replace(/^Thành phố\s+/i, '')
-      .trim();
-  }
-
-  function pickFromDisplayName(displayName, prefixes){
-    const s = String(displayName || '');
-    const re = new RegExp(`(?:${prefixes.join('|')})\\s+([^,]+)`, 'i');
-    const m = s.match(re);
-    return m ? cleanPrefix(m[0]) : '';
-  }
-
-  function buildShortAddress(a){
-    const parts = [
-      a.house_number || '',
-      a.road || a.pedestrian || a.footway || a.street || ''
-    ].filter(Boolean);
-
-    return parts.join(' ').trim();
-  }
-
-  async function getAddressFromLatLng(){
-    const coords = getLatLngFromURL();
-    if (!coords) return null;
-
-    try{
-      const url =
-        'https://nominatim.openstreetmap.org/reverse?format=jsonv2' +
-        `&lat=${encodeURIComponent(coords.lat)}` +
-        `&lon=${encodeURIComponent(coords.lng)}` +
-        '&accept-language=vi';
-
-      const res = await fetch(url, { cache:'no-store' });
-      if (!res.ok) return null;
-
-      const data = await res.json();
-      const a = data.address || {};
-
-      let phuongRaw =
-        a.suburb ||
-        a.quarter ||
-        a.neighbourhood ||
-        a.village ||
-        a.town ||
-        '';
-
-      if (!phuongRaw) {
-        phuongRaw = pickFromDisplayName(data.display_name, ['Phường', 'Xã', 'Thị trấn']);
-      }
-
-      let thanhPhoRaw =
-        a.city ||
-        a.state ||
-        a.province ||
-        '';
-
-      if (!thanhPhoRaw) {
-        thanhPhoRaw = pickFromDisplayName(data.display_name, ['Thành phố', 'Tỉnh']);
-      }
-
-      return {
-        dia_chi: buildShortAddress(a),
-        phuong_xa: cleanPrefix(phuongRaw),
-        thanh_pho: cleanPrefix(thanhPhoRaw)
-      };
-    }catch(err){
-      console.warn('Không lấy được địa chỉ từ tọa độ:', err);
-      return null;
-    }
-  }
-
-  function getCurrentNVID(){
-    try{
-      const s = sessionStorage.getItem('nv_ctx');
-      if (s){
-        const o = JSON.parse(s);
-        if (o?.ma_nv) return String(o.ma_nv);
-      }
-    }catch{}
-    try{
-      const s2 = localStorage.getItem('nv');
-      if (s2){
-        const o2 = JSON.parse(s2);
-        if (o2?.ma_nv) return String(o2.ma_nv);
-      }
-    }catch{}
-    return null;
-  }
-
-  function getCurrentNVName(){
-    try{
-      const s = sessionStorage.getItem('nv_ctx');
-      if (s){
-        const o = JSON.parse(s);
-        if (o?.ten_nv) return String(o.ten_nv);
-      }
-    }catch{}
-    try{
-      const s2 = localStorage.getItem('nv');
-      if (s2){
-        const o2 = JSON.parse(s2);
-        if (o2?.ten_nv) return String(o2.ten_nv);
-      }
-    }catch{}
-    return null;
-  }
-
-  function getLoggedNV(){
-    try{
-      const s = sessionStorage.getItem('nv_ctx');
-      if (s){
-        const o = JSON.parse(s);
-        if (o?.ma_nv) return o;
-      }
-    }catch{}
-
-    try{
-      const s2 = localStorage.getItem('nv');
-      if (s2){
-        const o2 = JSON.parse(s2);
-        if (o2?.ma_nv) return o2;
-      }
-    }catch{}
-
-    return null;
-  }
-
-  function getUrlEmployee(){
-    const qp = new URLSearchParams(location.search);
-    return {
-      ma_nv: String(qp.get('ma_nv') || '').trim(),
-      ten_nv: String(qp.get('ten_nv') || '').trim()
-    };
-  }
-
-  function blockPage(message, url){
-    try{ alert(message); }catch{}
-    location.replace(url);
-    throw new Error(message);
-  }
-
-  function requireMatchedEmployee(){
-    const fromUrl = getUrlEmployee();
-    const logged = getLoggedNV();
-
-    if (!fromUrl.ma_nv){
-      blockPage('Thiếu mã nhân viên. Vui lòng vào từ Trang chính.', './main.html');
-    }
-
-    if (!logged || !logged.ma_nv || logged.hoat_dong === false){
-      blockPage('Bạn chưa đăng nhập.', './login.html');
-    }
-
-    if (String(logged.ma_nv) !== String(fromUrl.ma_nv)){
-      blockPage('Mã nhân viên không khớp tài khoản đăng nhập.', './main.html');
-    }
-
-    return {
-      ma_nv: fromUrl.ma_nv,
-      ten_nv: fromUrl.ten_nv || logged.ten_nv || ''
-    };
-  }
-
-  const AUTH_NV = requireMatchedEmployee();
-
-  function getImagePayloadFromSession(){
-    try{
-      const raw = sessionStorage.getItem(SESSION_IMG_KEY);
-      if (!raw) return null;
-      const p = JSON.parse(raw);
-      if (p && typeof p.image_b64 === 'string' && p.image_b64.length > 0){
-        return p;
-      }
-    }catch{}
-    return null;
-  }
-
-  function getTodayPrefix_ddMMyyyy(){
-    const d = new Date();
-    const dd = String(d.getDate()).padStart(2,'0');
-    const mm = String(d.getMonth()+1).padStart(2,'0');
-    const yyyy = d.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
-  }
-
-  function isSameTodayFromText(v){
-    const s = String(v || '').trim();
-    if (!s) return false;
-    return s.startsWith(getTodayPrefix_ddMMyyyy());
-  }
-
-  function getCheckinTodayState(rows){
-    const all = Array.isArray(rows) ? rows : [];
-    let disabledCount = 0;
-
-    const mapped = all.map(r => {
-      const checkedToday = isSameTodayFromText(r.ngay_cuoi_cung_checkin);
-      if (checkedToday) disabledCount++;
-      return { ...r, checkedToday };
-    });
-
-    return { rows: mapped, disabledCount };
-  }
-
-  function applyCheckedTodayLock(){
-    const btnAdd = $('#btnAdd');
-    if (btnAdd){
-      btnAdd.classList.remove('btn-disabled');
-      btnAdd.disabled = false;
-    }
-
-    $$('#tbody .btn-edit').forEach(b=>{
-      b.classList.remove('btn-disabled');
-      b.disabled = false;
+  const out=[];
+  for(let i=1;i<lines.length;i++){
+    const cols = lines[i].split(',').map(s=>s.trim());
+    const lat = Number(cols[idx.lat]), lng = Number(cols[idx.lng]);
+    if(!isFinite(lat)||!isFinite(lng)) continue;
+    out.push({
+      lat, lng,
+      name:  idx.name >=0 ? cols[idx.name]  : '',
+      ma_kh: idx.ma_kh>=0 ? cols[idx.ma_kh] : '',
+      ma_hd: idx.ma_hd>=0 ? cols[idx.ma_hd] : ''
     });
   }
-
-  async function loadCheckedToday(){
-    const ma_nv = getCurrentNVID();
-    if (!ma_nv) return false;
-
-    const todayPrefix = getTodayPrefix_ddMMyyyy();
-
-    try{
-      const { data, error } = await SB
-        .from(CHECKIN_TABLE)
-        .select(`ma_nv, ${CHECKIN_DATE_COL}`)
-        .eq('ma_nv', ma_nv)
-        .like(CHECKIN_DATE_COL, todayPrefix + '%')
-        .limit(1);
-
-      if (error){
-        console.warn('nv_checkin bị chặn quyền/RLS:', error.message || error);
-        return false;
-      }
-
-      const hasCheckinToday = Array.isArray(data) && data.length > 0;
-      console.log('HAS_CHECKIN_TODAY =', hasCheckinToday, data);
-      return hasCheckinToday;
-    }catch(err){
-      console.warn('Lỗi đọc nv_checkin:', err);
-      return false;
-    }
-  }
-
-  function getWebhookURL(){
-    return 'https://dhsybbqoe.datadex.vn/webhook/hoadon';
-  }
-
-  async function postWebhook(payload){
-    const url = getWebhookURL();
-    const headers = { 'content-type':'application/json' };
-    try{
-      if (typeof getInternalKey === 'function'){
-        headers['x-internal-key'] = getInternalKey();
-      }
-    }catch{}
-
-    try{
-      const res = await fetch(url, { method:'POST', headers, body: JSON.stringify(payload) });
-      const text = await res.text().catch(()=> '');
-      if (res.ok) return { ok:true, status:res.status, text };
-      if (res.status !== 405) return { ok:false, status:res.status, text };
-    }catch(e){}
-
-    const qs = new URLSearchParams(Object.entries(payload).map(([k,v])=>[k, String(v ?? '')])).toString();
-    const getUrl = url + (url.includes('?') ? '&' : '?') + qs;
-    try{
-      const res2 = await fetch(getUrl, { method:'GET', headers: { 'x-internal-key': headers['x-internal-key'] || '' } });
-      const text2 = await res2.text().catch(()=> '');
-      return { ok: res2.ok, status: res2.status, text: text2 };
-    }catch(e2){
-      return { ok:false, status:0, text:String(e2) };
-    }
-  }
-
-  function openModal(mode,row=null){
-    CURRENT = { mode };
-    $('#modalTitle').textContent = mode==='add' ? 'Thêm khách hàng' : 'Sửa khách hàng';
-    $('#f_ma_kh').disabled = (mode==='edit');
-    const maKhRow = $('#maKhRow');
-    if (maKhRow) maKhRow.style.display = 'none';
-
-    if (mode==='edit' && row){
-      $('#f_ma_kh').value      = row.ma_kh || '';
-      $('#f_ten_kh').value     = row.ten_kh || '';
-      $('#f_dia_chi').value    = row.dia_chi || '';
-      $('#f_phuong_xa').value  = row.phuong_xa || '';
-      $('#f_thanh_pho').value  = row.thanh_pho || '';
-      $('#f_dien_thoai').value = row.dien_thoai || '';
-      CURRENT.ma_kh = row.ma_kh;
-    }else{
-      $('#f_ma_kh').value      = '';
-      $('#f_ten_kh').value     = '';
-      $('#f_dia_chi').value    = '';
-      $('#f_phuong_xa').value  = '';
-      $('#f_thanh_pho').value  = '';
-      $('#f_dien_thoai').value = '';
-
-      const hint = $('#modalHint');
-      if (hint) hint.textContent = 'Đang lấy địa chỉ theo tọa độ có sẵn...';
-
-      getAddressFromLatLng().then(info => {
-        if (CURRENT?.mode !== 'add') return;
-
-        if (!info){
-          const hint2 = $('#modalHint');
-          if (hint2) hint2.textContent = 'Không lấy được địa chỉ, nhập tay rồi lưu';
-          return;
-        }
-
-        if (!$('#f_dia_chi').value)    $('#f_dia_chi').value    = info.dia_chi || '';
-        if (!$('#f_phuong_xa').value)  $('#f_phuong_xa').value  = info.phuong_xa || '';
-        if (!$('#f_thanh_pho').value)  $('#f_thanh_pho').value  = info.thanh_pho || '';
-
-        const hint2 = $('#modalHint');
-        if (hint2) hint2.textContent = 'Đã lấy địa chỉ theo tọa độ có sẵn';
-      });
-    }
-
-    const hint = $('#modalHint');
-    if (hint){
-      hint.textContent = getLatLngFromURL() ? (hint.textContent || 'Dùng tọa độ đã có từ ảnh chụp') : '';
-    }
-
-    $('#modalWrap').style.display = 'flex';
-  }
-
-  const closeModal = () => $('#modalWrap').style.display='none';
-
-  async function makeClient(){
-    const url  = getConfig('url');
-    const anon = getConfig('anon');
-    const lib  = await getSupabaseLib();
-    return lib.createClient(url,anon,{auth:{persistSession:false}});
-  }
-
-  async function loadData(showStatusToast = false){
-    $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
-
-    const { data, error } = await SB
-      .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,phuong_xa,thanh_pho,dien_thoai,ngay_cuoi_cung_checkin',{count:'exact'})
-      .order('ten_kh',{ascending:true})
-      .limit(500);
-
-    if (error){
-      console.error(error);
-      $('#tbody').innerHTML =
-        `<tr><td colspan="4" class="muted">Lỗi Supabase: ${error.message}</td></tr>`;
-      return;
-    }
-
-    const { rows, disabledCount } = getCheckinTodayState(data || []);
-
-    $('#countInfo').textContent =
-      `${rows.length} dòng` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
-
-    renderRows(rows);
-
-    if (showStatusToast && disabledCount > 0){
-      toast(`Đã disable ${disabledCount} khách có ngày_cuoi_cung_checkin là hôm nay`, 'ok');
-    }
-  }
-
-  function renderRows(rows){
-    if (!rows.length){
-      $('#tbody').innerHTML =
-        `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-    } else {
-      const html = rows.map(r => {
-        const disabledByCustomer = r.checkedToday === true;
-        const disabledByBrowser = isBrowserCheckinDone();
-
-        const disabled = disabledByCustomer || disabledByBrowser;
-
-        const title = disabledByCustomer
-          ? 'Khách này đã check-in hôm nay'
-          : disabledByBrowser
-            ? 'Trình duyệt này đã gửi check-in, cần chụp ảnh mới để check-in tiếp'
-            : '';
-
-        const btnHtml = disabled
-          ? `<button class="ma-kh-btn ma-kh-disabled" disabled title="${escAttr(title)}">${escAttr(r.ma_kh)}</button>`
-          : `<button class="ma-kh-btn" data-id="${escAttr(r.ma_kh)}">${escAttr(r.ma_kh)}</button>`;
-
-        return `
-      <tr data-id="${escAttr(r.ma_kh)}"
-          data-ten_kh="${escAttr(r.ten_kh||'')}"
-          data-dia_chi="${escAttr(r.dia_chi||'')}"
-          data-phuong_xa="${escAttr(r.phuong_xa||'')}"
-          data-thanh_pho="${escAttr(r.thanh_pho||'')}"
-          data-dien_thoai="${escAttr(r.dien_thoai||'')}"
-          data-ngay_cuoi_cung_checkin="${escAttr(r.ngay_cuoi_cung_checkin||'')}">
-
-        <td class="col-ma">
-          ${btnHtml}
-        </td>
-        <td class="col-ten">
-          ${r.ten_kh || ''}
-          ${disabledByCustomer ? `<span class="muted"> • Đã check-in hôm nay</span>` : ``}
-        </td>
-        <td class="col-phone">${r.dien_thoai || ''}</td>
-        <td class="col-actions">
-          <button class="btn btn-warn btn-edit">Sửa</button>
-        </td>
-      </tr>`;
-      }).join('');
-
-      $('#tbody').innerHTML = html;
-    }
-
-    $$('#tbody .btn-edit').forEach(b =>
-      b.addEventListener('click', onEditClick)
-    );
-
-    $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
-      b.addEventListener('click', () => onMaKHClick(b.dataset.id))
-    );
-
-    applyCheckedTodayLock();
-  }
-
-  function onEditClick(e){
-    const tr = e.target.closest('tr');
-    if (!tr) return;
-    const row = {
-      ma_kh:      tr.getAttribute('data-id'),
-      ten_kh:     tr.dataset.ten_kh || tr.children[1].textContent,
-      dia_chi:    tr.dataset.dia_chi || '',
-      phuong_xa:  tr.dataset.phuong_xa || '',
-      thanh_pho:  tr.dataset.thanh_pho || '',
-      dien_thoai: tr.dataset.dien_thoai || tr.children[2].textContent
-    };
-    openModal('edit', row);
-  }
-
-async function onMaKHClick(ma_kh){
-  if (!ma_kh) return;
-
-  if (isBrowserCheckinDone()) {
-    toast('Đã gửi check-in trên trình duyệt này. Hãy chụp ảnh mới để check-in tiếp.', 'info');
-    return;
-  }
-
-  if (checkinBusy) {
-    toast('Đang gửi check-in, vui lòng chờ...', 'info');
-    return;
-  }
-
-  if (pendingCheckins.has(ma_kh)) {
-    toast('Check-in này đang được xử lý...', 'info');
-    return;
-  }
-
-  const coords = getLatLngFromURL();
-  if (!coords){
-    toast('Thiếu toạ độ lat/lng trong URL — không thể checkin', 'err');
-    return;
-  }
-
-  checkinBusy = true;
-  pendingCheckins.add(ma_kh);
-
-  /*
-    Khóa NGAY khi bấm.
-    Nếu webhook đang chạy mà bảng refresh/render lại, renderRows()
-    vẫn thấy CHECKIN_BROWSER_DONE_KEY và tiếp tục làm mờ toàn bộ Mã KH.
-  */
-  setBrowserCheckinDone();
-
-  const currentBtn = document.querySelector(`.ma-kh-btn[data-id="${cssEscapeSafe(ma_kh)}"]`);
-
-  /*
-    Khóa toàn bộ nút Mã KH ngay khi bấm.
-    Như vậy không thể bấm nhầm mã thứ 2.
-  */
-  $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(btn=>{
-    btn.disabled = true;
-    btn.classList.add('ma-kh-disabled');
-    btn.title = 'Đang có check-in được gửi...';
-  });
-
-  if (currentBtn){
-    currentBtn.textContent = 'Đang gửi...';
-    currentBtn.removeAttribute('data-id');
-    currentBtn.title = 'Đang gửi check-in...';
-  }
-
-  const img    = getImagePayloadFromSession();
-
-  try{
-    const payload = {
-      action: 'checkin',
-      ma_kh,
-      ma_nv:  AUTH_NV.ma_nv,
-      ten_nv: AUTH_NV.ten_nv || null,
-      lat: Number(coords.lat),
-      lng: Number(coords.lng),
-      image_mime: img?.image_mime || 'image/jpeg',
-      image_b64:  img?.image_b64  || ''
-    };
-
-    const res = await postWebhook(payload);
-
-    if (res.ok){
-      toast(`✅ ĐÃ CHECK IN KH: ${ma_kh}`,'ok');
-
-      if (currentBtn){
-        currentBtn.disabled = true;
-        currentBtn.classList.add('ma-kh-disabled');
-        currentBtn.textContent = ma_kh;
-        currentBtn.removeAttribute('data-id');
-        currentBtn.title = 'Đã gửi check-in';
-      }
-
-      setTimeout(() => {
-        const coords2 = getLatLngFromURL();
-        if (coords2){
-          runNearby(coords2.lat, coords2.lng, getRadiusFromUI(), false);
-        } else {
-          loadData(false);
-        }
-      }, 1200);
-
-    } else {
-      throw new Error(`Webhook lỗi ${res.status}: ${res.text?.slice(0,160)||'...'}`);
-    }
-
-  } catch(err){
-    console.error(err);
-
-    /*
-      Nếu webhook lỗi thật thì mở lại toàn bộ nút.
-    */
-    clearBrowserCheckinDone();
-
-    $$('#tbody .ma-kh-btn.ma-kh-disabled').forEach(btn=>{
-      const txt = btn.textContent.trim();
-
-      if (txt === 'Đang gửi...') {
-        btn.textContent = ma_kh;
-      }
-
-      btn.disabled = false;
-      btn.classList.remove('ma-kh-disabled');
-      btn.title = '';
-
-      if (!btn.getAttribute('data-id')) {
-        btn.setAttribute('data-id', txt === 'Đang gửi...' ? ma_kh : txt);
-      }
-    });
-
-    toast(err.message || 'Gửi webhook thất bại','err');
-
-  } finally {
-    checkinBusy = false;
-    pendingCheckins.delete(ma_kh);
-  }
+  return out;
 }
 
-  function generateMaKH(){
-    const d = new Date();
-    const yy = String(d.getFullYear()).slice(-2);
-    const MM = String(d.getMonth()+1).padStart(2,'0');
-    const dd = String(d.getDate()).padStart(2,'0');
-    const hh = String(d.getHours()).padStart(2,'0');
-    const mm = String(d.getMinutes()).padStart(2,'0');
-    const ss = String(d.getSeconds()).padStart(2,'0');
-    return yy + MM + dd + hh + mm + ss;
+async function ensureSheetPoints(){
+  if (SHEET_POINTS.length) return SHEET_POINTS;
+  const cached = lsGet('SHEET_POINTS_CACHE');
+  const ts = lsGet('SHEET_POINTS_TS');
+  if (cached && ts && (Date.now()-ts < SHEET_TTL_MS)){
+    SHEET_POINTS = cached; return SHEET_POINTS;
+  }
+  const res = await fetch(SHEET_URL, { cache:'no-store' });
+  const ct  = (res.headers.get('content-type')||'').toLowerCase();
+  let data=[];
+  if (ct.includes('application/json')){
+    const j = await res.json();
+    const arr = Array.isArray(j) ? j : (Array.isArray(j.data) ? j.data : []);
+    data = arr.map(r=>({
+      lat:Number(r.lat), lng:Number(r.lng),
+      name:r.name||r.ten||'', ma_kh:r.ma_kh||'', ma_hd:r.ma_hd||r.mahd||''
+    })).filter(x=>isFinite(x.lat)&&isFinite(x.lng));
+  }else{
+    const txt = await res.text();
+    data = parseCsv(txt);
+  }
+  SHEET_POINTS = data;
+  lsSet('SHEET_POINTS_CACHE', data);
+  lsSet('SHEET_POINTS_TS', Date.now());
+  return SHEET_POINTS;
+}
+
+function distanceMeters(a,b){
+  const toRad=d=>d*Math.PI/180, R=6371000;
+  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+  const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
+  const aa=s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
+  return 2*R*Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
+}
+
+function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
+  let best=null, bestD=Infinity;
+  for(const it of arr){
+    const d = distanceMeters({lat,lng},{lat:it.lat,lng:it.lng});
+    if(d<=radiusM && d<bestD){ best={...it, dist:Math.round(d)}; bestD=d; }
+  }
+  return best;
+}
+
+async function afterCameraStartedCheck20m(){
+  try{
+    await ensureSheetPoints();
+    const g = await getGPSOnce();
+    if (g && (g.acc==null || g.acc<=60)){
+      const hit = findNearbyInArray(g.lat, g.lng, SHEET_POINTS, NEAR_RADIUS_M);
+      if (hit){
+        const label = hit.name || hit.ma_kh || hit.ma_hd || 'Vị trí';
+        toast(`✅ ${label} đã được check-in (${hit.dist}m)`, 'ok', 3500);
+      }
+    }
+  }catch{}
+}
+
+/* ================== DOM & PARAMS ================== */
+const $ = id => document.getElementById(id);
+
+const video     = $('video');
+const canvas    = $('canvas');
+const btnStart  = $('btnStart');
+const btnShot   = $('btnShot');
+const btnTorch  = $('btnTorch');
+const btnSound  = $('btnSound');
+const btnZoomIn = $('btnZoomIn');
+const btnZoomOut= $('btnZoomOut');
+const btnMenu   = $('btnMenu');
+
+const toastEl   = $('toast');
+const bar       = $('bar');
+const tagInfo   = $('tagInfo');
+const stage     = $('stage') || document.querySelector('.stage');
+
+if (video) {
+  video.style.objectFit = 'cover';
+  video.setAttribute('playsinline','');
+  video.muted = true;
+}
+
+const qp   = new URLSearchParams(location.search);
+const MA_KH = qp.get('ma_kh') || '';
+const MA_HD = qp.get('ma_hd') || '';
+
+function getLoggedNV(){
+  const nv = lsGet('nv');
+  if (nv && nv.ma_nv) return nv;
+
+  const ctx = (() => {
+    try { return JSON.parse(sessionStorage.getItem('nv_ctx') || 'null'); }
+    catch { return null; }
+  })();
+  if (ctx && ctx.ma_nv) return ctx;
+
+  return null;
+}
+
+const LOGGED_NV = getLoggedNV();
+const MA_NV = (qp.get('ma_nv') || '').trim();
+const TEN_NV = (qp.get('ten_nv') || LOGGED_NV?.ten_nv || '').trim();
+
+if (!MA_NV) {
+  try { alert('Thiếu mã nhân viên. Vui lòng vào từ Trang chính.'); } catch {}
+  location.replace('./main.html');
+  throw new Error('Missing ma_nv');
+}
+
+if (!LOGGED_NV || !LOGGED_NV.ma_nv || LOGGED_NV.hoat_dong === false) {
+  try { alert('Bạn chưa đăng nhập.'); } catch {}
+  location.replace('./login.html');
+  throw new Error('Not logged in');
+}
+
+if (String(LOGGED_NV.ma_nv) !== String(MA_NV)) {
+  try { alert('Mã nhân viên không khớp tài khoản đăng nhập.'); } catch {}
+  location.replace('./main.html');
+  throw new Error('ma_nv mismatch');
+}
+
+if (tagInfo) {
+  tagInfo.textContent = [MA_NV && `NV:${MA_NV}`, MA_KH && `KH:${MA_KH}`, MA_HD && `HD:${MA_HD}`]
+    .filter(Boolean).join(' · ');
+}
+
+/* ================== AUDIO (shutter) ================== */
+let audioCtx = null, compressor = null;
+const SHUTTER_GAIN = 0.9;
+
+async function ensureAudioCtx(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AC();
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+    compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    compressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
+    compressor.release.setValueAtTime(0.1, audioCtx.currentTime);
+    compressor.connect(audioCtx.destination);
+  }
+  if(audioCtx.state === 'suspended') await audioCtx.resume();
+}
+
+function noiseBurst(ctx, t0, dur=0.03){
+  const len = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for(let i=0;i<len;i++) data[i] = (Math.random()*2-1) * 0.6;
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0, t0);
+  g.gain.linearRampToValueAtTime(SHUTTER_GAIN, t0 + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+  const lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(4500, t0);
+  src.connect(lp); lp.connect(g); g.connect(compressor);
+  src.start(t0); src.stop(t0 + dur + 0.01);
+}
+
+let soundEnabled = (localStorage.getItem('soundEnabled')??'1') === '1';
+
+function renderSoundBtn(){
+  if (!btnSound) return;
+  btnSound.classList.toggle('btn-on', soundEnabled);
+  btnSound.textContent = soundEnabled ? '🔊' : '🔇';
+  btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
+}
+renderSoundBtn();
+
+btnSound && (btnSound.onclick = ()=>{ 
+  soundEnabled=!soundEnabled; 
+  localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); 
+  renderSoundBtn(); 
+  toast(soundEnabled?'Đã bật tiếng chụp':'Đã tắt tiếng chụp'); 
+});
+
+async function playShutter(){
+  if(!soundEnabled) return;
+  await ensureAudioCtx();
+  const ctx = audioCtx; const now = ctx.currentTime;
+  noiseBurst(ctx, now, 0.035);
+  const osc1 = ctx.createOscillator(), g1 = ctx.createGain();
+  osc1.type='square'; osc1.frequency.setValueAtTime(1400, now);
+  g1.gain.setValueAtTime(0, now);
+  g1.gain.linearRampToValueAtTime(SHUTTER_GAIN, now + 0.01);
+  g1.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+  osc1.connect(g1); g1.connect(compressor); osc1.start(now); osc1.stop(now + 0.1);
+  const t2 = now + 0.06;
+  const osc2 = ctx.createOscillator(), g2 = ctx.createGain();
+  osc2.type='square'; osc2.frequency.setValueAtTime(950, t2);
+  g2.gain.setValueAtTime(0, t2);
+  g2.gain.linearRampToValueAtTime(SHUTTER_GAIN*0.7, t2 + 0.012);
+  g2.gain.exponentialRampToValueAtTime(0.001, t2 + 0.08);
+  osc2.connect(g2); g2.connect(compressor); osc2.start(t2); osc2.stop(t2 + 0.09);
+  if (navigator.vibrate) navigator.vibrate(30);
+}
+
+/* ================== TOAST ================== */
+function toast(t,type='info',ms=2400){
+  if (!toastEl) return;
+  toastEl.textContent=t;
+  toastEl.style.opacity='1';
+  toastEl.style.transform='translate(-50%,10px)';
+  clearTimeout(toast._t);
+  toast._t=setTimeout(()=>{
+    toastEl.style.opacity='0';
+    toastEl.style.transform='translate(-50%,-120%)';
+  },ms);
+}
+
+/* ================== GPS (BẮT BUỘC TRƯỚC KHI BẬT CAM) ================== */
+function openGeoHelp(){
+  const msg =
+`⚠️ Bạn đã chặn quyền vị trí.
+Cách bật lại nhanh:
+
+• Chrome/Edge (máy tính): bấm biểu tượng 🔒 cạnh thanh địa chỉ → Site settings → Location = Allow → tải lại trang.
+• Điện thoại: Settings → Privacy/Location → bật Location; và trong Chrome → Site settings → Location = Allow.
+
+Sau đó bấm lại "Bật camera".`;
+  try{ alert(msg); }catch{}
+}
+
+function getGeoPermStateSafe(){
+  return (navigator.permissions && navigator.permissions.query)
+    ? navigator.permissions.query({ name:'geolocation' }).then(p=>p.state).catch(()=>null)
+    : Promise.resolve(null);
+}
+
+function getGPSOnce(timeoutMs = 6000){ 
+  return new Promise(resolve=>{
+    if(!('geolocation' in navigator)) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
+      err=>resolve({err}),
+      { enableHighAccuracy:true, timeout:timeoutMs, maximumAge:30000 }
+    );
+  });
+}
+
+async function ensureGeoAllowedAndGet(){
+  if(!('geolocation' in navigator)){
+    toast('Thiết bị không hỗ trợ vị trí (GPS)', 'err', 3500);
+    try{ alert('Thiết bị không hỗ trợ vị trí (GPS).'); }catch{}
+    return false;
   }
 
-  async function checkMaKHExists(ma_kh){
-    const { data, error } = await SB
-      .from(TABLE)
-      .select('ma_kh')
-      .eq('ma_kh', ma_kh)
-      .limit(1);
+  const st = await getGeoPermStateSafe();
 
-    if (error){
-      console.error('Lỗi check mã KH:', error);
+  if (st === 'denied'){
+    toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
+    openGeoHelp();
+    return false;
+  }
+
+  const r = await getGPSOnce();
+
+  if (r && r.err){
+    const code = r.err.code;
+    if (code === 1){
+      toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
+      openGeoHelp();
       return false;
     }
-    return Array.isArray(data) && data.length > 0;
+    toast('⚠️ Không lấy được GPS. Hãy bật vị trí/GPS và thử lại.', 'err', 3500);
+    return false;
   }
 
-  async function saveForm(){
-    if (saveBusy){
-      toast('Đang lưu, vui lòng chờ...', 'info');
-      return;
-    }
+  const lat = r?.lat ?? 0;
+  const lng = r?.lng ?? 0;
 
-    let ma_kh      = $('#f_ma_kh').value.trim();
-    const ten_kh     = $('#f_ten_kh').value.trim();
-    const dia_chi    = $('#f_dia_chi').value.trim();
-    const phuong_xa  = $('#f_phuong_xa').value.trim();
-    const thanh_pho  = $('#f_thanh_pho').value.trim();
-    const dien_thoai = $('#f_dien_thoai').value.trim();
-
-    if (CURRENT?.mode === 'add'){
-      if (!ma_kh){
-        ma_kh = generateMaKH();
-        $('#f_ma_kh').value = ma_kh;
-        toast(`Tự sinh mã KH: ${ma_kh}`,'ok');
-      }
-
-      const exists = await checkMaKHExists(ma_kh);
-      if (exists){
-        toast(`❌ Mã KH ${ma_kh} đã tồn tại, vui lòng nhập mã khác hoặc để trống để tự sinh`,'err');
-        return;
-      }
-    } else {
-      if (!ma_kh){
-        toast('Mã KH không được trống','err');
-        return;
-      }
-    }
-
-    const coords = getLatLngFromURL();
-    const lat = coords?.lat ?? null;
-    const lng = coords?.lng ?? null;
-
-    saveBusy = true;
-    const btnSave = $('#btnSave');
-    if (btnSave) btnSave.disabled = true;
-
-    if (CURRENT?.mode === 'add'){
-      const { error } = await SB
-        .from(TABLE)
-        .insert([{ ma_kh, ten_kh, dia_chi, phuong_xa, thanh_pho, dien_thoai, lat, lng }]);
-
-      if (error){
-        console.error(error);
-        toast('Thêm thất bại','err');
-        saveBusy = false;
-        if (btnSave) btnSave.disabled = false;
-        return;
-      }
-      toast('Đã thêm','ok');
-    } else {
-      const { error } = await SB
-        .from(TABLE)
-        .update({ ten_kh, dia_chi, phuong_xa, thanh_pho, dien_thoai })
-        .eq('ma_kh', CURRENT.ma_kh);
-
-      if (error){
-        console.error(error);
-        toast('Sửa thất bại','err');
-        saveBusy = false;
-        if (btnSave) btnSave.disabled = false;
-        return;
-      }
-      toast('Đã lưu','ok');
-    }
-
-    saveBusy = false;
-    if (btnSave) btnSave.disabled = false;
-
-    closeModal();
-    if (coords){
-      runNearby(coords.lat, coords.lng, getRadiusFromUI(), false);
-    } else {
-      loadData(false);
-    }
+  if (!lat || lat === 0 || !lng || lng === 0){
+    toast('⚠️ Chưa có vị trí GPS. Hãy bật vị trí rồi thử lại.', 'err', 3500);
+    try{ alert('⚠️ Chưa có vị trí GPS. Hãy bật vị trí/GPS rồi bấm lại "Bật camera".'); }catch{}
+    return false;
   }
 
-  async function runNearby(lat, lng, radius, showStatusToast = false){
-    const $tbody = $('#tbody');
-    $tbody.innerHTML =
-      `<tr><td colspan="4" class="muted">Đang lọc theo bán kính...</td></tr>`;
+  window.__myLatLng = { lat, lng };
+  return true;
+}
 
-    const R = 6371000, d2r = Math.PI/180, latR = lat*d2r;
-    const delta = (radius / R) * (180/Math.PI);
-    const cosLat = Math.max(1e-6, Math.cos(latR));
-    const minLat = lat - delta, maxLat = lat + delta;
-    const minLng = lng - delta/cosLat;
-    const maxLng = lng + delta/cosLat;
+const CSS_DIGITAL_ZOOM_MAX = 5;
 
-    const { data, error } = await SB
-      .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,phuong_xa,thanh_pho,dien_thoai,lat,lng,ngay_cuoi_cung_checkin', { count:'exact' })
-      .not('lat','is',null).not('lng','is',null)
-      .gte('lat', minLat).lte('lat', maxLat)
-      .gte('lng', minLng).lte('lng', maxLng)
-      .limit(1000);
+/* ================== CAMERA, ZOOM, TORCH ================== */
+let stream=null, videoTrack=null, torchOn=false;
+let zoomSupported=false, cssZoomFallback=false;
+let zoomMin=1, zoomMax=1, zoomStep=0.1, zoomVal=1;
 
-    if (error){
-      console.error(error);
-      toast('Lỗi truy vấn Supabase','err');
-      $('#tbody').innerHTML =
-        `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-      $('#countInfo').textContent = `0 dòng (lỗi truy vấn)`;
-      return;
-    }
+function stopCam(){
+  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch{} }
+  stream=null; videoTrack=null;
+  if (video) video.srcObject=null;
+}
 
-    const { rows: sourceRows, disabledCount } = getCheckinTodayState(data || []);
-
-    const rows = sourceRows
-      .map(r=>({ ...r, rlat:Number(r.lat), rlng:Number(r.lng) }))
-      .filter(r=>Number.isFinite(r.rlat) && Number.isFinite(r.rlng));
-
-    const nearby = rows.map(r=>{
-      const dLat = (r.rlat - lat) * d2r;
-      const dLng = (r.rlng - lng) * d2r;
-      const a = Math.sin(dLat/2)**2 +
-                Math.cos(latR)*Math.cos(r.rlat*d2r)*Math.sin(dLng/2)**2;
-      const dist = 2*R*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return { ...r, dist: Math.round(dist) };
-    }).filter(r=>r.dist <= radius)
-      .sort((a,b)=>a.dist - b.dist);
-
-    if (nearby.length === 0){
-      $('#tbody').innerHTML =
-        `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-      $('#countInfo').textContent =
-        `0 dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
-      if (showStatusToast){
-        toast(`Không có KH trong ${Math.round(radius)}m`, 'info');
-      }
-      return;
-    }
-
-    renderRows(nearby);
-
-    $('#countInfo').textContent =
-      `${nearby.length} dòng (lọc ${Math.round(radius)}m)` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : '');
-
-    if (showStatusToast){
-      toast(
-        `Tìm thấy ${nearby.length} KH` + (disabledCount ? ` • Disable ${disabledCount} KH đã check-in hôm nay` : ''),
-        'ok'
-      );
-    }
-  }
-
-  $('#btnAdd').addEventListener('click',()=>openModal('add'));
-  $('#btnCancel').addEventListener('click',closeModal);
-  $('#btnSave').addEventListener('click',saveForm);
-
-  const btnOpenCheckin = $('#btnOpenCheckin');
-  if (btnOpenCheckin){
-    btnOpenCheckin.addEventListener('click', ()=>{
-      const coords = getLatLngFromURL();
-      const url = new URL('app_checkin.html', location.href);
-
-      url.searchParams.set('ma_nv', AUTH_NV.ma_nv);
-      url.searchParams.set('ten_nv', AUTH_NV.ten_nv || '');
-      url.searchParams.set('radius', String(getRadiusFromUI()));
-
-      if (coords){
-        url.searchParams.set('lat', String(coords.lat));
-        url.searchParams.set('lng', String(coords.lng));
-      }
-
-      location.assign(url.toString());
-    });
-  }
-
-  $('#radiusSelect').addEventListener('change',()=>{
-    const coords = getLatLngFromURL();
-    const r = getRadiusFromUI();
-    if (coords) runNearby(coords.lat, coords.lng, r, true);
-    else toast('Thiếu toạ độ lat/lng trong URL để lọc theo bán kính', 'err');
-  });
-
+async function startCam(){
   try{
-    SB = await makeClient();
+    stopCam();
+    stage && stage.classList.remove('ready');
 
-    await loadCheckedToday();
-    applyCheckedTodayLock();
-
-    initRadiusFromURLOrDefault();
-
-    const coords = getLatLngFromURL();
-    if (coords){
-      const r = getRadiusFromUI();
-      runNearby(coords.lat, coords.lng, r, false);
-    }else{
-      loadData(false);
+    const gpsReady = await ensureGeoAllowedAndGet();
+    if (!gpsReady) {
+      if (btnShot) btnShot.disabled = true;
+      return;
     }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Trình duyệt không hỗ trợ camera');
+    }
+
+    const base = {
+      video: {
+        width:  { ideal: 1080 },
+        height: { ideal: 1920 },
+        facingMode: { ideal: 'environment' }
+      },
+      audio: false
+    };
+
+    try{
+      stream = await navigator.mediaDevices.getUserMedia(base);
+    }catch(e){
+      if (e.name === 'NotAllowedError') {
+        throw new Error('Bạn đã chặn quyền camera. Vào Cài đặt trình duyệt để bật lại.');
+      }
+      if (e.name === 'NotFoundError') {
+        throw new Error('Không tìm thấy thiết bị camera.');
+      }
+      if (String(e.message || '').includes('Device in use')) {
+        toast('Camera đang bận — thử lại...', 'info', 2000);
+        await new Promise(r => setTimeout(r, 1000));
+        stream = await navigator.mediaDevices.getUserMedia(base);
+      } else {
+        throw e;
+      }
+    }
+
+    if (video) {
+      video.srcObject = stream;
+      video.setAttribute('playsinline','');
+      video.muted = true;
+
+      await new Promise(r => { video.onloadedmetadata = r; });
+
+      try {
+        await video.play();
+      } catch (err) {
+        console.warn('Không play được video:', err);
+      }
+    }
+
+    videoTrack = stream.getVideoTracks()[0] || null;
+
+    stage && stage.classList.add('ready');
+
+    if (btnShot) btnShot.disabled = false;
+    await initZoom();
+
+    await setZoom(zoomMin);
+    await tryApplyTorch(false);
+
+    toast('Đã bật camera','ok');
+
+    // Không gọi Sheet khi mở camera để trang nhẹ hơn.
+    // Nếu cần bật lại kiểm tra gần 20m, mở comment 3 dòng dưới.
+    // setTimeout(() => {
+    //   afterCameraStartedCheck20m().catch(()=>{});
+    // }, 200);
+
   }catch(e){
     console.error(e);
-    $('#tbody').innerHTML =
-      `<tr><td colspan="4" class="muted">Lỗi khởi tạo: ${e.message}</td></tr>`;
+    if (btnShot) btnShot.disabled = true;
+    stage && stage.classList.remove('ready');
+    toast('Lỗi camera: ' + (e.message || e), 'err', 4200);
   }
-})();
+}
+
+function renderCssZoom(){
+  if (!video) return;
+  video.style.transformOrigin = 'center center';
+  video.style.transform = `scale(${zoomVal})`;
+}
+
+async function initZoom(){
+  zoomSupported = false;
+  cssZoomFallback = false;
+  zoomMin = 1;
+  zoomMax = 1;
+  zoomStep = 0.1;
+  zoomVal = 1;
+
+  try{
+    const caps = videoTrack?.getCapabilities?.() || {};
+    const hasZoom = caps && typeof caps.zoom === 'object';
+
+    if (hasZoom && typeof caps.zoom.min === 'number'){
+      zoomSupported = true;
+      zoomMin  = caps.zoom.min;
+      zoomMax  = caps.zoom.max || caps.zoom.min;
+      zoomStep = caps.zoom.step || 0.1;
+      zoomVal  = zoomMin;
+      await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+    } else {
+      cssZoomFallback = true;
+      zoomMin  = 1;
+      zoomMax  = CSS_DIGITAL_ZOOM_MAX;
+      zoomStep = 0.2;
+      zoomVal  = 1;
+      renderCssZoom();
+    }
+  } catch {
+    cssZoomFallback = true;
+    zoomMin  = 1;
+    zoomMax  = CSS_DIGITAL_ZOOM_MAX;
+    zoomStep = 0.2;
+    zoomVal  = 1;
+    renderCssZoom();
+  }
+
+  if (btnZoomIn)  btnZoomIn.disabled  = (zoomVal >= zoomMax);
+  if (btnZoomOut) btnZoomOut.disabled = (zoomVal <= zoomMin);
+}
+
+async function setZoom(next){
+  next = Number(next) || 1;
+  next = Math.max(zoomMin, Math.min(zoomMax, next));
+  if (Math.abs(next - zoomVal) < 1e-3) return;
+  zoomVal = next;
+
+  try{
+    if (zoomSupported){
+      await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+    } else if (cssZoomFallback){
+      renderCssZoom();
+    }
+  } catch (e){
+    cssZoomFallback = true;
+    zoomSupported = false;
+    renderCssZoom();
+  }
+
+  if (btnZoomOut) btnZoomOut.disabled = zoomVal <= (zoomMin + 1e-6);
+  if (btnZoomIn)  btnZoomIn.disabled  = zoomVal >= (zoomMax - 1e-6);
+}
+
+btnZoomIn  && (btnZoomIn.onclick  = ()=> setZoom((zoomVal + zoomStep).toFixed(2)));
+btnZoomOut && (btnZoomOut.onclick = ()=> setZoom((zoomVal - zoomStep).toFixed(2)));
+
+async function tryApplyTorch(turnOn){
+  try{
+    if(!videoTrack) return false;
+    const capabilities = videoTrack.getCapabilities?.() || {};
+    if(!('torch' in capabilities)) { if (btnTorch) btnTorch.disabled=true; return false; }
+    await videoTrack.applyConstraints({ advanced: [{ torch: !!turnOn }] });
+    torchOn = !!turnOn;
+    btnTorch && btnTorch.classList.toggle('btn-on', torchOn);
+    return true;
+  }catch{
+    if (btnTorch) btnTorch.disabled=true;
+    return false;
+  }
+}
+
+btnTorch && (btnTorch.onclick = async ()=>{
+  const ok = await tryApplyTorch(!torchOn);
+  if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
+});
+
+/* ================== CANVAS ================== */
+function drawToCanvas(){
+  if (!video || !canvas) return;
+  const fw = video.videoWidth, fh = video.videoHeight;
+  if(!fw || !fh) return;
+  const desired = TARGET_W / TARGET_H;
+  const ar = fw / fh;
+  let sx=0, sy=0, sw=fw, sh=fh;
+  if (ar > desired){ sw = fh * desired; sx = (fw - sw) / 2; }
+  else { sh = fw / desired; sy = (fh - sh) / 2; }
+  if (cssZoomFallback && zoomVal > 1){
+    const cx = sx + sw/2, cy = sy + sh/2, z = zoomVal;
+    const newSw = sw / z, newSh = sh / z;
+    sx = cx - newSw/2; sy = cy - newSh/2; sw = newSw; sh = newSh;
+  }
+  canvas.width = TARGET_W; canvas.height = TARGET_H;
+  canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
+}
+
+/* ================== EVENTS ================== */
+btnStart && (btnStart.onclick = startCam);
+
+let shooting = false;
+
+btnShot && (btnShot.onclick = async ()=>{
+  if(!stream || shooting){
+    toast('Đang xử lý...', 'info');
+    return;
+  }
+
+  shooting = true;
+  btnShot.disabled = true;
+
+  try{
+    await ensureAudioCtx();
+    await playShutter();
+    drawToCanvas();
+
+    const gps = await getGPSOnce();
+    const lat = gps?.lat ?? 0;
+    const lng = gps?.lng ?? 0;
+
+    if (!lat || lat === 0 || !lng || lng === 0){
+      toast('⚠️ Chưa có vị trí. Hãy bật GPS rồi chụp lại.', 'err', 3500);
+      try{ alert('⚠️ Chưa có vị trí. Hãy bật GPS/vị trí rồi chụp lại.'); }catch{}
+      return;
+    }
+
+    const mime = 'image/jpeg';
+    const dataUrl = canvas.toDataURL(mime, 0.85);
+
+    const payload = {
+      image_mime: mime,
+      image_b64: (dataUrl.split(',')[1] || ''),
+      ma_nv: MA_NV,
+      ten_nv: TEN_NV,
+      ma_kh: MA_KH || '',
+      ma_hd: MA_HD || ''
+    };
+
+    sessionStorage.setItem(SESSION_IMG_KEY, JSON.stringify(payload));
+
+    const targetUrl = new URL('/checkin_khach_hang.html', location.origin);
+
+    targetUrl.searchParams.set('lat', String(lat));
+    targetUrl.searchParams.set('lng', String(lng));
+    targetUrl.searchParams.set('lag', String(lat));
+    targetUrl.searchParams.set('ma_nv', MA_NV);
+    targetUrl.searchParams.set('ten_nv', TEN_NV);
+
+    if (MA_KH) targetUrl.searchParams.set('ma_kh', MA_KH);
+    if (MA_HD) targetUrl.searchParams.set('ma_hd', MA_HD);
+
+    targetUrl.searchParams.set('img', 'session');
+
+    /*
+      Mỗi lần chụp ảnh mới từ app_checkin,
+      mở lại danh sách KH mới.
+
+      Xóa toàn bộ khóa tạm của nút Mã KH trên chính trình duyệt/tab hiện tại.
+      Khi mở checkin_khach_hang.html:
+      - Các nút Mã KH sẽ hiện lại bình thường.
+      - Chỉ những KH đã check-in cùng ngày theo dữ liệu thật mới bị mờ.
+    */
+    sessionStorage.removeItem('CLICKED_CHECKIN_BROWSER_V1');
+    sessionStorage.removeItem('CHECKIN_BROWSER_DONE_V1');
+
+    location.assign(targetUrl.toString());
+
+  } catch (err) {
+    console.error(err);
+    toast('Lỗi khi chuẩn bị dữ liệu: ' + (err.message || err), 'err', 4000);
+  } finally {
+    setTimeout(()=>{
+      shooting = false;
+      btnShot.disabled = !stream;
+    }, 800);
+  }
+});
+
+/* Nút Menu → về main.html */
+btnMenu && (btnMenu.onclick = ()=>{
+  location.assign('main.html');
+});
+
+/* ================== AUTO BOOT ================== */
+function showStage(){
+  if (stage && !stage.classList.contains('ready')) {
+    stage.classList.add('ready');
+  }
+}
+
+// Mở trang nhanh: không tự gọi GPS/camera khi vừa vào trang.
+// Chỉ khi bấm nút Cam mới xin GPS và mở camera.
+showStage();
+
+if (btnShot) btnShot.disabled = true;
+
+setTimeout(() => {
+  toast('Bấm nút "Cam" để mở camera.', 'info', 2200);
+}, 300);
+
+/* Khi tab ẩn/hiện lại */
+document.addEventListener('visibilitychange', () => { 
+  if (document.hidden) {
+    stopCam();
+  } else {
+    showStage();
+    if (!stream) {
+      if (btnShot) btnShot.disabled = true;
+      toast('Bấm nút "Bật camera" để mở lại cam (sẽ yêu cầu GPS trước).', 'info', 2600);
+    }
+  }
+});
