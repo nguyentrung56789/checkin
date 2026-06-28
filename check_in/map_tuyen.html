@@ -188,7 +188,8 @@
     while (true) {
       const { data, error } = await supabase
         .from("nv_checkin_khach_hang")
-        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang")
+        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang,con_hoat_dong")
+        .eq("con_hoat_dong", true)
         .range(from, from + pageSize - 1);
 
       if (error) throw error;
@@ -239,6 +240,7 @@
 
   let points = [];
   let markers = [];
+  const pointById = new Map();
 
   data.forEach((r,i)=>{
     const lat = parseFloat(String(r.lat ?? "").trim());
@@ -260,6 +262,7 @@
 
     const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
     const formLink = `./checkin_khach_hang_form.html?id=${encodeURIComponent(r.id)}`;
+    const rowId = String(r.id || "").trim();
     const khKey = String(r.ma_kh || "").trim();
     const tongCheckinKH = tongCheckinTheoKH.get(khKey) || 0;
 
@@ -278,7 +281,8 @@
         color === "orange" ? "Cam" :
         "Đỏ"
       }</b><br>
-      Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b>
+      Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b><br>
+      Còn hoạt động: <b>${r.con_hoat_dong === false ? "Không" : "Có"}</b>
 
       <br><br>
       <a href="${formLink}"
@@ -287,6 +291,12 @@
          style="display:block;padding:10px 12px;background:#16a34a;color:white;text-align:center;border-radius:8px;text-decoration:none;font-weight:700;">
          Mở form khách hàng
       </a>
+
+      ${rowId ? `<button type="button"
+         data-stop-id="${esc(rowId)}"
+         style="display:block;width:100%;margin-top:8px;padding:10px 12px;background:#dc2626;color:white;text-align:center;border:0;border-radius:8px;text-decoration:none;font-weight:700;cursor:pointer;">
+         Ngừng hoạt động
+      </button>` : ""}
 
       <a href="${googleMapLink}"
          target="_blank"
@@ -298,7 +308,7 @@
 
     mk.addTo(map);
 
-    points.push({
+    const point = {
       stt,
       lat,
       lng,
@@ -310,9 +320,47 @@
       nvName: String(r.ten_nv || "").trim(),
       nvPhone: String(r.dien_thoai || "").trim(),
       row: r
-    });
+    };
+
+    points.push(point);
+    if (rowId) pointById.set(rowId, point);
 
     markers.push(mk);
+  });
+
+  async function stopActiveById(id){
+    const stopId = String(id || "").trim();
+    if (!stopId) return;
+
+    const point = pointById.get(stopId);
+    const tenKh = point?.row?.ten_kh || "khách hàng này";
+
+    const ok = confirm(`Bạn muốn ${tenKh} ngừng hoạt động địa chỉ này?`);
+    if (!ok) return;
+
+    const { error } = await supabase
+      .from("nv_checkin_khach_hang")
+      .update({ con_hoat_dong: false })
+      .eq("id", Number(stopId));
+
+    if (error) {
+      alert("Lỗi cập nhật: " + error.message);
+      return;
+    }
+
+    if (point) {
+      point.row.con_hoat_dong = false;
+      if (map.hasLayer(point.marker)) map.removeLayer(point.marker);
+      point.marker.closePopup();
+    }
+  }
+
+  document.addEventListener("click", e => {
+    const btn = e.target.closest("[data-stop-id]");
+    if (!btn) return;
+
+    e.preventDefault();
+    stopActiveById(btn.dataset.stopId);
   });
 
   if(markers.length){
