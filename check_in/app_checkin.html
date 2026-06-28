@@ -1,51 +1,199 @@
 <!doctype html>
 <html lang="vi">
 <head>
+  <script src="js/auth_token.js"></script>
+  <script> if (!checkAccess()) {}</script>
+
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#111" />
-  <title>Check-in (Camera + GPS + Âm thanh)</title>
-  <link rel="stylesheet" href="css/app_checkin.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Trang chính</title>
+  <style>
+    :root{
+      --bg:#0b1020;--panel:#12182b;--muted:#8aa0b6;
+      --text:#e9f0f6;--accent:#4da3ff;--ok:#22c55e;--warn:#f59e0b;
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;height:100%;
+      background:var(--bg);color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    }
+    .topbar{
+      position:sticky;top:0;z-index:50;
+      display:flex;align-items:center;
+      padding:12px 16px;background:var(--bg);
+      border-bottom:1px solid #12182b;
+    }
+    .topbar .title{font-weight:700}
+    .topbar .spacer{flex:1}
+    .usermenu{position:relative}
+    .userbtn{
+      display:flex;align-items:center;gap:8px;
+      background:#12182b;color:#e9f0f6;
+      border:1px solid #22304a;border-radius:10px;
+      padding:8px 12px;cursor:pointer;font-weight:600;
+    }
+    .userbtn:focus{outline:2px solid #4da3ff55;outline-offset:2px}
+    .usericon{opacity:.85}
+    .caret{opacity:.8;margin-left:4px}
+    .dropdown{
+      position:absolute;right:0;top:calc(100% + 8px);
+      min-width:200px;background:#0f1830;border:1px solid #22304a;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      border-radius:12px;padding:6px;display:none;
+    }
+    .dropdown.open{display:block}
+    .dropdown .item{
+      width:100%;text-align:left;background:transparent;border:0;
+      color:#e6edff;padding:10px 12px;border-radius:8px;cursor:pointer;
+    }
+    .dropdown .item:hover{background:#1a2542}
+    .dropdown .item.danger{color:#ff6b6b}
+    .center{
+      min-height:calc(100dvh - 64px);
+      display:flex;align-items:center;justify-content:center;
+      padding:24px;
+    }
+    .wrap{text-align:center}
+    h1{margin-bottom:28px;font-size:26px}
+    .btn{
+      display:inline-block;padding:14px 28px;margin:10px;border:0;
+      border-radius:14px;font-size:17px;font-weight:600;cursor:pointer;
+      transition:.2s;color:#001226;
+    }
+    .btn:hover{filter:brightness(1.1)}
+    .btn-checkin{background:var(--accent)}
+    .btn-phan-tich{background:var(--ok)}
+    .btn-bao-cao{background:var(--warn)}
+  </style>
 </head>
 <body>
-  <div class="stage" id="stage">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas" style="display:none"></canvas>
+  <header class="topbar">
+    <div class="title">📋 Trang chính</div>
+    <div class="spacer"></div>
 
-    <!-- Nút đè trên camera -->
-    <div class="bar" id="bar">
-      <button id="btnStart"   class="btn btn-blue">Cam</button>
-      <button id="btnShot"    class="btn btn-green" disabled>📸</button>
-      <button id="btnZoomOut" class="btn btn-icon btn-gray" title="Thu nhỏ">➖</button>
-      <button id="btnZoomIn"  class="btn btn-icon btn-gray" title="Phóng to">➕</button>
-      <button id="btnTorch"   class="btn btn-icon btn-gray" title="Đèn">🔦</button>
-      <button id="btnSound"   class="btn btn-icon btn-gray" title="Bật/Tắt tiếng">🔊</button>
-
-      <!-- Nút MENU -->
-      <button id="btnMenu" class="btn btn-gray" style="margin-left:8px">☰ Menu</button>
+    <div class="usermenu" id="userMenu">
+      <button class="userbtn" id="userBtn" aria-haspopup="true" aria-expanded="false" title="Tài khoản">
+        <span class="usericon">👤</span>
+        <span class="username" id="username">Tài khoản</span>
+        <span class="caret">▾</span>
+      </button>
+      <div class="dropdown" id="userDropdown" role="menu" aria-hidden="true">
+        <button class="item danger" id="logoutBtn">Đăng xuất</button>
+      </div>
     </div>
-  </div>
+  </header>
 
-  <div id="tagInfo"></div>
+  <main class="center">
+    <div class="wrap">
+      <h1>Chọn chức năng</h1>
+      <button class="btn btn-checkin" onclick="go('app_checkin.html')">✅ Check-in</button>
+      <button class="btn btn-phan-tich" onclick="go('map_tuyen.html')">📊 Xem bản đồ</button>
+      <button class="btn btn-bao-cao" onclick="go('baocao.html')">📑 Báo cáo</button>
+    </div>
+  </main>
 
-  <div id="toast"></div>
-
-  <iframe id="sink" name="sink" style="display:none"></iframe>
-
-  <audio id="snapSound"
-         src="https://cdn.jsdelivr.net/gh/naptha/tesseract.js@master/examples/browser/sound/snap.wav"
-         preload="auto"></audio>
-
-  <!-- KHÔNG CÒN mapSheet / mapHeader / mapFrame -->
-
-  <script defer src="../js/app_checkin.js"></script>
-
-  <!-- Chuyển tới menu -->
   <script>
-    document.getElementById('btnMenu')?.addEventListener('click', () => {
-      location.href = "main.html";
-    });
+    function safeParse(s){
+      try { return JSON.parse(s); } catch { return null; }
+    }
+
+    function getNV(){
+      const nv = safeParse(localStorage.getItem('nv'));
+      if (nv && nv.ma_nv) {
+        return {
+          ma_nv: nv.ma_nv,
+          ten_nv: nv.ten_nv || '',
+          hoat_dong: nv.hoat_dong !== false
+        };
+      }
+
+      const ctx = safeParse(sessionStorage.getItem('nv_ctx'));
+      if (ctx && ctx.ma_nv) {
+        return {
+          ma_nv: ctx.ma_nv,
+          ten_nv: ctx.ten_nv || '',
+          hoat_dong: ctx.hoat_dong !== false
+        };
+      }
+
+      return null;
+    }
+
+    function go(path){
+      const user = getNV();
+
+      if (!user || !user.ma_nv || user.hoat_dong === false) {
+        location.replace('./login.html');
+        return;
+      }
+
+      if (path === 'app_checkin.html') {
+        const url = new URL(path, location.href);
+        url.searchParams.set('ma_nv', user.ma_nv);
+        url.searchParams.set('ten_nv', user.ten_nv || '');
+        location.href = url.toString();
+        return;
+      }
+
+      location.href = path;
+    }
+
+    (function initUserMenu(){
+      const btn = document.getElementById('userBtn');
+      const menu = document.getElementById('userDropdown');
+      const nameEl = document.getElementById('username');
+
+      const user = getNV();
+
+      if (!user || !user.ma_nv || user.hoat_dong === false) {
+        location.replace('./login.html');
+        return;
+      }
+
+      nameEl.textContent = user.ten_nv || user.ma_nv || 'Tài khoản';
+
+      function openMenu(){
+        menu.classList.add('open');
+        btn.setAttribute('aria-expanded','true');
+        menu.setAttribute('aria-hidden','false');
+      }
+
+      function closeMenu(){
+        menu.classList.remove('open');
+        btn.setAttribute('aria-expanded','false');
+        menu.setAttribute('aria-hidden','true');
+      }
+
+      function toggleMenu(){
+        menu.classList.contains('open') ? closeMenu() : openMenu();
+      }
+
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        toggleMenu();
+      });
+
+      document.addEventListener('click', function(e){
+        if (!menu.contains(e.target) && e.target !== btn) closeMenu();
+      });
+
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape') closeMenu();
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', function(){
+        closeMenu();
+
+        try {
+          localStorage.removeItem('nv');
+          localStorage.removeItem('last_ma_nv');
+          sessionStorage.removeItem('nv_ctx');
+        } catch {}
+
+        location.replace('./login.html');
+      });
+    })();
   </script>
 </body>
-
 </html>
