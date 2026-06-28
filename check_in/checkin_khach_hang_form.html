@@ -325,6 +325,10 @@
         window.opener.postMessage({ type:"khachhang-updated", id:rowId }, location.origin);
       }
     } catch {}
+
+    setTimeout(() => {
+      try { window.close(); } catch {}
+    }, 350);
   });
 
   document.getElementById("gpsBtn").addEventListener("click", async () => {
