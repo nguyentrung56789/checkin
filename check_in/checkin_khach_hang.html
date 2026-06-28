@@ -89,6 +89,7 @@
     }
 
     .input{
+      width:100%;
       padding:8px 10px;
       background:#0f1628;
       border:1px solid #243153;
@@ -173,7 +174,7 @@
     }
 
     .modal{
-      width:min(560px,92vw);
+      width:min(620px,92vw);
       background:var(--panel);
       border:1px solid #1e2943;
       border-radius:16px;
@@ -189,6 +190,13 @@
       display:grid;
       grid-template-columns:1fr 1fr;
       gap:10px;
+    }
+
+    .grid label{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      font-size:14px;
     }
 
     .grid .span2{
@@ -220,6 +228,16 @@
       z-index:2000;
       box-shadow:0 14px 40px rgba(0,0,0,.6);
       font-size:15px;
+    }
+
+    @media (max-width:640px){
+      .grid{
+        grid-template-columns:1fr;
+      }
+
+      .grid .span2{
+        grid-column:auto;
+      }
     }
   </style>
 </head>
@@ -286,10 +304,28 @@
         <input id="f_dia_chi" class="input" placeholder="Số nhà, đường...">
       </label>
 
+      <label>
+        Phường/Xã:
+        <input id="f_phuong_xa" class="input" placeholder="Tự lấy theo tọa độ">
+      </label>
+
+      <label>
+        Quận/Huyện:
+        <input id="f_quan_huyen" class="input" placeholder="Tự lấy theo tọa độ">
+      </label>
+
+      <label class="span2">
+        Thành phố:
+        <input id="f_thanh_pho" class="input" placeholder="Tự lấy theo tọa độ">
+      </label>
+
       <label class="span2">
         Điện thoại:
         <input id="f_dien_thoai" class="input" placeholder="VD: 09xxxxxxxx">
       </label>
+
+      <input id="f_lat" type="hidden">
+      <input id="f_lon" type="hidden">
     </div>
 
     <div class="row" style="margin-top:12px">
@@ -301,6 +337,104 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<script>
+  function setVal(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.value = value || '';
+  }
+
+  function setHint(text) {
+    const el = document.getElementById('modalHint');
+    if (el) el.textContent = text || '';
+  }
+
+  function getAddressPart(address, keys) {
+    for (const key of keys) {
+      if (address && address[key]) return address[key];
+    }
+    return '';
+  }
+
+  async function fillAddressByCurrentLocation() {
+    if (!navigator.geolocation) {
+      setHint('Máy không hỗ trợ lấy tọa độ');
+      return;
+    }
+
+    setHint('Đang lấy tọa độ...');
+
+    navigator.geolocation.getCurrentPosition(async function(pos) {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      setVal('f_lat', lat);
+      setVal('f_lon', lon);
+
+      try {
+        setHint('Đang lấy phường/quận/thành phố...');
+
+        const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&accept-language=vi`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const address = data.address || {};
+
+        const phuongXa = getAddressPart(address, [
+          'ward',
+          'suburb',
+          'quarter',
+          'neighbourhood',
+          'village',
+          'town'
+        ]);
+
+        const quanHuyen = getAddressPart(address, [
+          'city_district',
+          'district',
+          'county',
+          'municipality'
+        ]);
+
+        const thanhPho = getAddressPart(address, [
+          'city',
+          'state',
+          'province'
+        ]);
+
+        setVal('f_phuong_xa', phuongXa);
+        setVal('f_quan_huyen', quanHuyen);
+        setVal('f_thanh_pho', thanhPho);
+
+        setHint('Đã lấy địa chỉ theo tọa độ');
+      } catch (err) {
+        console.error(err);
+        setHint('Không lấy được phường/quận/thành phố');
+      }
+    }, function() {
+      setHint('Bạn chưa cho phép lấy vị trí');
+    }, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 0
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const btnAdd = document.getElementById('btnAdd');
+
+    if (btnAdd) {
+      btnAdd.addEventListener('click', function() {
+        setVal('f_phuong_xa', '');
+        setVal('f_quan_huyen', '');
+        setVal('f_thanh_pho', '');
+        setVal('f_lat', '');
+        setVal('f_lon', '');
+
+        fillAddressByCurrentLocation();
+      });
+    }
+  });
+</script>
 
 <script defer src="../js/checkin_khach_hang.js"></script>
 </body>
