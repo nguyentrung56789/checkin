@@ -94,106 +94,103 @@
   </main>
 
   <script>
-    function safeParse(s){
-      try { return JSON.parse(s); } catch { return null; }
+  function safeParse(s){
+    try { return JSON.parse(s); } catch { return null; }
+  }
+
+  function getNV(){
+    const nv = safeParse(localStorage.getItem('nv'));
+    if (nv && nv.ma_nv) {
+      return {
+        ma_nv: nv.ma_nv,
+        ten_nv: nv.ten_nv || '',
+        hoat_dong: nv.hoat_dong !== false
+      };
     }
 
-    function getNV(){
-      const nv = safeParse(localStorage.getItem('nv'));
-      if (nv && nv.ma_nv) {
-        return {
-          ma_nv: nv.ma_nv,
-          ten_nv: nv.ten_nv || '',
-          hoat_dong: nv.hoat_dong !== false
-        };
-      }
-
-      const ctx = safeParse(sessionStorage.getItem('nv_ctx'));
-      if (ctx && ctx.ma_nv) {
-        return {
-          ma_nv: ctx.ma_nv,
-          ten_nv: ctx.ten_nv || '',
-          hoat_dong: ctx.hoat_dong !== false
-        };
-      }
-
-      return null;
+    const ctx = safeParse(sessionStorage.getItem('nv_ctx'));
+    if (ctx && ctx.ma_nv) {
+      return {
+        ma_nv: ctx.ma_nv,
+        ten_nv: ctx.ten_nv || '',
+        hoat_dong: ctx.hoat_dong !== false
+      };
     }
 
-    function go(path){
-      const user = getNV();
+    return null;
+  }
 
-      if (!user || !user.ma_nv || user.hoat_dong === false) {
-        location.replace('./login.html');
-        return;
-      }
+  function go(path){
+    const user = getNV();
 
-      if (path === 'app_checkin.html') {
-        const url = new URL(path, location.href);
-        url.searchParams.set('ma_nv', user.ma_nv);
-        url.searchParams.set('ten_nv', user.ten_nv || '');
-        location.href = url.toString();
-        return;
-      }
-
-      location.href = path;
+    if (!user || !user.ma_nv || user.hoat_dong === false) {
+      location.replace('./login.html');
+      return;
     }
 
-    (function initUserMenu(){
-      const btn = document.getElementById('userBtn');
-      const menu = document.getElementById('userDropdown');
-      const nameEl = document.getElementById('username');
+    const url = new URL(path, location.href);
+    url.searchParams.set('ma_nv', user.ma_nv);
+    url.searchParams.set('ten_nv', user.ten_nv || '');
 
-      const user = getNV();
+    location.href = url.toString();
+  }
 
-      if (!user || !user.ma_nv || user.hoat_dong === false) {
-        location.replace('./login.html');
-        return;
-      }
+  (function initUserMenu(){
+    const btn = document.getElementById('userBtn');
+    const menu = document.getElementById('userDropdown');
+    const nameEl = document.getElementById('username');
 
-      nameEl.textContent = user.ten_nv || user.ma_nv || 'Tài khoản';
+    const user = getNV();
 
-      function openMenu(){
-        menu.classList.add('open');
-        btn.setAttribute('aria-expanded','true');
-        menu.setAttribute('aria-hidden','false');
-      }
+    if (!user || !user.ma_nv || user.hoat_dong === false) {
+      location.replace('./login.html');
+      return;
+    }
 
-      function closeMenu(){
-        menu.classList.remove('open');
-        btn.setAttribute('aria-expanded','false');
-        menu.setAttribute('aria-hidden','true');
-      }
+    nameEl.textContent = user.ten_nv || user.ma_nv || 'Tài khoản';
 
-      function toggleMenu(){
-        menu.classList.contains('open') ? closeMenu() : openMenu();
-      }
+    function openMenu(){
+      menu.classList.add('open');
+      btn.setAttribute('aria-expanded','true');
+      menu.setAttribute('aria-hidden','false');
+    }
 
-      btn.addEventListener('click', function(e){
-        e.stopPropagation();
-        toggleMenu();
-      });
+    function closeMenu(){
+      menu.classList.remove('open');
+      btn.setAttribute('aria-expanded','false');
+      menu.setAttribute('aria-hidden','true');
+    }
 
-      document.addEventListener('click', function(e){
-        if (!menu.contains(e.target) && e.target !== btn) closeMenu();
-      });
+    function toggleMenu(){
+      menu.classList.contains('open') ? closeMenu() : openMenu();
+    }
 
-      document.addEventListener('keydown', function(e){
-        if (e.key === 'Escape') closeMenu();
-      });
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      toggleMenu();
+    });
 
-      document.getElementById('logoutBtn').addEventListener('click', function(){
-        closeMenu();
+    document.addEventListener('click', function(e){
+      if (!menu.contains(e.target) && e.target !== btn) closeMenu();
+    });
 
-        try {
-          localStorage.removeItem('nv');
-          localStorage.removeItem('last_ma_nv');
-          sessionStorage.removeItem('nv_ctx');
-        } catch {}
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape') closeMenu();
+    });
 
-        location.replace('./login.html');
-      });
-    })();
-  </script>
+    document.getElementById('logoutBtn').addEventListener('click', function(){
+      closeMenu();
+
+      try {
+        localStorage.removeItem('nv');
+        localStorage.removeItem('last_ma_nv');
+        sessionStorage.removeItem('nv_ctx');
+      } catch {}
+
+      location.replace('./login.html');
+    });
+  })();
+</script>
+
 </body>
 </html>
