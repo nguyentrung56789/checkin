@@ -8,6 +8,16 @@ async function getSupabaseLib(){
   const $  = s => document.querySelector(s);
   const $$ = s => Array.from(document.querySelectorAll(s));
 
+  if (!document.getElementById('btn-danger-style')){
+    const style = document.createElement('style');
+    style.id = 'btn-danger-style';
+    style.textContent = `
+      .btn-danger{background:#ef4444;color:#fff}
+      .btn-danger:hover{filter:brightness(1.08)}
+    `;
+    document.head.appendChild(style);
+  }
+
   const toast = (msg,t='')=>{
     const el = $('#toast');
     if (!el) return alert(msg);
@@ -453,7 +463,8 @@ async function getSupabaseLib(){
         </td>
         <td class="col-phone">${r.dien_thoai || ''}</td>
         <td class="col-actions">
-          <button class="btn btn-warn btn-edit">Sửa</button>
+           <button class="btn btn-warn btn-edit">Sửa</button>
+  <button class="btn btn-danger btn-delete" data-id="${escAttr(r.ma_kh)}">Xóa</button>
         </td>
       </tr>`;
       }).join('');
@@ -463,6 +474,10 @@ async function getSupabaseLib(){
 
     $$('#tbody .btn-edit').forEach(b =>
       b.addEventListener('click', onEditClick)
+    );
+
+    $$('#tbody .btn-delete').forEach(b =>
+      b.addEventListener('click', () => onDeleteClick(b.dataset.id))
     );
 
     $$('#tbody .ma-kh-btn:not(.ma-kh-disabled)').forEach(b =>
@@ -616,6 +631,53 @@ async function getSupabaseLib(){
     }
 
     return Array.isArray(data) && data.length > 0;
+  }
+
+  async function onDeleteClick(ma_kh){
+    if (!ma_kh) return;
+
+    const ok = confirm(`Xóa khách hàng mã ${ma_kh}?`);
+    if (!ok) return;
+
+    const btn = document.querySelector(`.btn-delete[data-id="${cssEscapeSafe(ma_kh)}"]`);
+
+    try{
+      if (btn){
+        btn.disabled = true;
+        btn.textContent = 'Đang xóa...';
+      }
+
+      const { error } = await SB
+        .from(TABLE)
+        .delete()
+        .eq('ma_kh', ma_kh);
+
+      if (error){
+        console.error(error);
+        toast('Xóa thất bại: ' + error.message, 'err');
+
+        if (btn){
+          btn.disabled = false;
+          btn.textContent = 'Xóa';
+        }
+
+        return;
+      }
+
+      toast(`Đã xóa ${ma_kh}`, 'ok');
+
+      const coords = getLatLngFromURL();
+      if (coords) runNearby(coords.lat, coords.lng, getRadiusFromUI(), false);
+      else loadData(false);
+    }catch(err){
+      console.error(err);
+      toast('Xóa thất bại: ' + err.message, 'err');
+
+      if (btn){
+        btn.disabled = false;
+        btn.textContent = 'Xóa';
+      }
+    }
   }
 
   async function saveForm(){
