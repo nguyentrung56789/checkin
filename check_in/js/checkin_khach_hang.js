@@ -737,7 +737,18 @@ async function onMaKHClick(ma_kh){
     if (CURRENT?.mode === 'add'){
       const { error } = await SB
         .from(TABLE)
-        .insert([{ ma_kh, ten_kh, dia_chi, phuong_xa, thanh_pho, dien_thoai, lat, lng }]);
+        .insert([{
+  ma_kh,
+  ten_kh,
+  dia_chi,
+  phuong_xa,
+  thanh_pho,
+  dien_thoai,
+  lat,
+  lng,
+  ma_nv: AUTH_NV.ma_nv,
+  ten_nv: AUTH_NV.ten_nv || null
+}]);
 
       if (error){
         console.error(error);
