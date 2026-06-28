@@ -43,6 +43,7 @@ async function getSupabaseLib(){
   let SB      = null;
   let CURRENT = null;
   const pendingCheckins = new Set();
+  let saveBusy = false;
 
   /*
     Khóa toàn bộ nút Mã KH trên chính trình duyệt/tab hiện tại
@@ -99,6 +100,95 @@ async function getSupabaseLib(){
   function getRadiusFromUI(){
     const v = Number($('#radiusSelect').value);
     return Number.isFinite(v) && v > 0 ? v : 50;
+  }
+
+  function cleanPrefix(value){
+    return String(value || '')
+      .replace(/^Phường\s+/i, '')
+      .replace(/^Xã\s+/i, '')
+      .replace(/^Quận\s+/i, '')
+      .replace(/^Huyện\s+/i, '')
+      .replace(/^Thị xã\s+/i, '')
+      .replace(/^Thành phố\s+/i, '')
+      .trim();
+  }
+
+  function pickFromDisplayName(displayName, prefixes){
+    const s = String(displayName || '');
+    const re = new RegExp(`(?:${prefixes.join('|')})\\s+([^,]+)`, 'i');
+    const m = s.match(re);
+    return m ? cleanPrefix(m[0]) : '';
+  }
+
+  function buildShortAddress(a){
+    const parts = [
+      a.house_number || '',
+      a.road || a.pedestrian || a.footway || a.street || ''
+    ].filter(Boolean);
+
+    return parts.join(' ').trim();
+  }
+
+  async function getAddressFromLatLng(){
+    const coords = getLatLngFromURL();
+    if (!coords) return null;
+
+    try{
+      const url =
+        'https://nominatim.openstreetmap.org/reverse?format=jsonv2' +
+        `&lat=${encodeURIComponent(coords.lat)}` +
+        `&lon=${encodeURIComponent(coords.lng)}` +
+        '&accept-language=vi';
+
+      const res = await fetch(url, { cache:'no-store' });
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      const a = data.address || {};
+
+      let phuongRaw =
+        a.suburb ||
+        a.quarter ||
+        a.neighbourhood ||
+        a.village ||
+        a.town ||
+        '';
+
+      if (!phuongRaw) {
+        phuongRaw = pickFromDisplayName(data.display_name, ['Phường', 'Xã', 'Thị trấn']);
+      }
+
+      let quanRaw =
+        a.city_district ||
+        a.county ||
+        a.district ||
+        a.municipality ||
+        '';
+
+      if (!quanRaw) {
+        quanRaw = pickFromDisplayName(data.display_name, ['Quận', 'Huyện', 'Thị xã']);
+      }
+
+      let thanhPhoRaw =
+        a.city ||
+        a.state ||
+        a.province ||
+        '';
+
+      if (!thanhPhoRaw) {
+        thanhPhoRaw = pickFromDisplayName(data.display_name, ['Thành phố', 'Tỉnh']);
+      }
+
+      return {
+        dia_chi: buildShortAddress(a),
+        phuong_xa: cleanPrefix(phuongRaw),
+        quan_huyen: cleanPrefix(quanRaw),
+        thanh_pho: cleanPrefix(thanhPhoRaw)
+      };
+    }catch(err){
+      console.warn('Không lấy được địa chỉ từ tọa độ:', err);
+      return null;
+    }
   }
 
   function getCurrentNVID(){
@@ -328,11 +418,32 @@ async function getSupabaseLib(){
       $('#f_quan_huyen').value = '';
       $('#f_thanh_pho').value  = '';
       $('#f_dien_thoai').value = '';
+
+      const hint = $('#modalHint');
+      if (hint) hint.textContent = 'Đang lấy địa chỉ theo tọa độ có sẵn...';
+
+      getAddressFromLatLng().then(info => {
+        if (CURRENT?.mode !== 'add') return;
+
+        if (!info){
+          const hint2 = $('#modalHint');
+          if (hint2) hint2.textContent = 'Không lấy được địa chỉ, nhập tay rồi lưu';
+          return;
+        }
+
+        if (!$('#f_dia_chi').value)    $('#f_dia_chi').value    = info.dia_chi || '';
+        if (!$('#f_phuong_xa').value)  $('#f_phuong_xa').value  = info.phuong_xa || '';
+        if (!$('#f_quan_huyen').value) $('#f_quan_huyen').value = info.quan_huyen || '';
+        if (!$('#f_thanh_pho').value)  $('#f_thanh_pho').value  = info.thanh_pho || '';
+
+        const hint2 = $('#modalHint');
+        if (hint2) hint2.textContent = 'Đã lấy địa chỉ theo tọa độ có sẵn';
+      });
     }
 
     const hint = $('#modalHint');
     if (hint){
-      hint.textContent = getLatLngFromURL() ? 'Dùng tọa độ đã có từ ảnh chụp' : '';
+      hint.textContent = getLatLngFromURL() ? (hint.textContent || 'Dùng tọa độ đã có từ ảnh chụp') : '';
     }
 
     $('#modalWrap').style.display = 'flex';
@@ -599,6 +710,11 @@ async function onMaKHClick(ma_kh){
   }
 
   async function saveForm(){
+    if (saveBusy){
+      toast('Đang lưu, vui lòng chờ...', 'info');
+      return;
+    }
+
     let ma_kh      = $('#f_ma_kh').value.trim();
     const ten_kh     = $('#f_ten_kh').value.trim();
     const dia_chi    = $('#f_dia_chi').value.trim();
@@ -630,6 +746,10 @@ async function onMaKHClick(ma_kh){
     const lat = coords?.lat ?? null;
     const lng = coords?.lng ?? null;
 
+    saveBusy = true;
+    const btnSave = $('#btnSave');
+    if (btnSave) btnSave.disabled = true;
+
     if (CURRENT?.mode === 'add'){
       const { error } = await SB
         .from(TABLE)
@@ -638,6 +758,8 @@ async function onMaKHClick(ma_kh){
       if (error){
         console.error(error);
         toast('Thêm thất bại','err');
+        saveBusy = false;
+        if (btnSave) btnSave.disabled = false;
         return;
       }
       toast('Đã thêm','ok');
@@ -650,10 +772,15 @@ async function onMaKHClick(ma_kh){
       if (error){
         console.error(error);
         toast('Sửa thất bại','err');
+        saveBusy = false;
+        if (btnSave) btnSave.disabled = false;
         return;
       }
       toast('Đã lưu','ok');
     }
+
+    saveBusy = false;
+    if (btnSave) btnSave.disabled = false;
 
     closeModal();
     if (coords){
