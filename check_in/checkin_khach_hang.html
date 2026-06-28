@@ -149,12 +149,6 @@
       opacity:.7;
     }
 
-    .ma-kh-btn.ma-kh-disabled:hover,
-    .ma-kh-btn.ma-kh-disabled:active{
-      transform:none;
-      filter:none;
-    }
-
     .modal-wrap{
       position:fixed;
       inset:0;
@@ -322,7 +316,14 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="../js/checkin_khach_hang.js"></script>
+
 <script>
+  function val(id) {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  }
+
   function setVal(id, value) {
     const el = document.getElementById(id);
     if (el) el.value = value || '';
@@ -331,6 +332,32 @@
   function setHint(text) {
     const el = document.getElementById('modalHint');
     if (el) el.textContent = text || '';
+  }
+
+  function getNowYmdHis() {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).formatToParts(new Date());
+
+    const o = {};
+    for (const p of parts) o[p.type] = p.value;
+
+    return `${o.year}${o.month}${o.day}${o.hour}${o.minute}${o.second}`;
+  }
+
+  function getLoginUser() {
+    try {
+      return JSON.parse(localStorage.getItem('chatwoot_crm_user') || '{}');
+    } catch {
+      return {};
+    }
   }
 
   function cleanName(value) {
@@ -390,7 +417,7 @@
 
         const phuongXaRaw =
           firstValue(a, ['ward', 'quarter', 'suburb', 'neighbourhood', 'village', 'town']) ||
-          findByRegex(parts, /^(Phường|Xã|Thị trấn|Hàng|Kênh)/i) ||
+          findByRegex(parts, /^(Phường|Xã|Thị trấn)\s+/i) ||
           '';
 
         let quanHuyenRaw =
@@ -402,20 +429,6 @@
           firstValue(a, ['state', 'province']) ||
           findByRegex(parts, /Hải Phòng|Hà Nội|Đà Nẵng|Hồ Chí Minh|Cần Thơ/i) ||
           '';
-
-        if (!quanHuyenRaw) {
-          const cityValue = firstValue(a, ['city']);
-          if (/^Phường\s+/i.test(cityValue)) {
-            quanHuyenRaw = cityValue;
-          }
-        }
-
-        if (!thanhPhoRaw) {
-          const cityValue = firstValue(a, ['city']);
-          if (!/^Phường\s+/i.test(cityValue)) {
-            thanhPhoRaw = cityValue;
-          }
-        }
 
         setVal('f_dia_chi', diaChi);
         setVal('f_phuong_xa', cleanName(phuongXaRaw));
@@ -436,24 +449,122 @@
     });
   }
 
-  document.addEventListener('DOMContentLoaded', function() {
-    const btnAdd = document.getElementById('btnAdd');
+  function resetFormThemKhach() {
+    setVal('f_ma_kh', '');
+    setVal('f_ten_kh', '');
+    setVal('f_dia_chi', '');
+    setVal('f_phuong_xa', '');
+    setVal('f_quan_huyen', '');
+    setVal('f_thanh_pho', '');
+    setVal('f_dien_thoai', '');
+    setVal('f_lat', '');
+    setVal('f_lon', '');
+    setHint('');
+  }
 
-    if (btnAdd) {
-      btnAdd.addEventListener('click', function() {
-        setVal('f_dia_chi', '');
-        setVal('f_phuong_xa', '');
-        setVal('f_quan_huyen', '');
-        setVal('f_thanh_pho', '');
-        setVal('f_lat', '');
-        setVal('f_lon', '');
+  const btnAddEl = document.getElementById('btnAdd');
+  const btnCancelEl = document.getElementById('btnCancel');
+  const modalWrapEl = document.getElementById('modalWrap');
+  const modalTitleEl = document.getElementById('modalTitle');
 
-        fillAddressByCurrentLocation();
+  if (btnAddEl) {
+    btnAddEl.onclick = function() {
+      modalTitleEl.textContent = 'Thêm khách hàng';
+      modalWrapEl.style.display = 'flex';
+      resetFormThemKhach();
+      fillAddressByCurrentLocation();
+    };
+  }
+
+  if (btnCancelEl) {
+    btnCancelEl.onclick = function() {
+      modalWrapEl.style.display = 'none';
+    };
+  }
+
+  const oldBtnSave = document.getElementById('btnSave');
+  const newBtnSave = oldBtnSave.cloneNode(true);
+  oldBtnSave.parentNode.replaceChild(newBtnSave, oldBtnSave);
+
+  newBtnSave.addEventListener('click', async function() {
+    const user = getLoginUser();
+
+    const ma_nv = String(user.ma_nv || user.id_nv || user.id || '').trim();
+    const ten_nv = String(user.ten_nv || user.name || '').trim();
+
+    if (!ma_nv) {
+      alert('Không tìm thấy mã nhân viên. Anh đăng nhập lại trước nhé.');
+      return;
+    }
+
+    const ten_kh = val('f_ten_kh');
+
+    if (!ten_kh) {
+      alert('Chưa nhập tên khách hàng');
+      return;
+    }
+
+    const ma_kh = `${ma_nv}_${getNowYmdHis()}`;
+
+    const payload = {
+      ma_kh: ma_kh,
+      ma_nv: ma_nv,
+      ten_nv: ten_nv,
+      ten_kh: ten_kh,
+      lng: val('f_lon'),
+      lat: val('f_lat'),
+      dien_thoai: val('f_dien_thoai'),
+      dia_chi: val('f_dia_chi'),
+      ghi_ghu: '',
+      Da_mua_hang: false,
+      checkin_thang: 0,
+      checkin_all: 0,
+      ngay_cuoi_cung_: null,
+      con_hoat_dong: true,
+      phuong_xa: val('f_phuong_xa'),
+      quan_huyen: val('f_quan_huyen'),
+      thanh_pho: val('f_thanh_pho')
+    };
+
+    try {
+      setHint('Đang lưu...');
+      newBtnSave.disabled = true;
+
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/nv_checkin_khach_hang`, {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation'
+        },
+        body: JSON.stringify(payload)
       });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        console.error(result);
+        throw new Error(result.message || 'Không lưu được khách hàng');
+      }
+
+      setHint('Đã lưu');
+      modalWrapEl.style.display = 'none';
+
+      if (typeof loadCustomers === 'function') {
+        await loadCustomers();
+      } else if (typeof loadData === 'function') {
+        await loadData();
+      } else {
+        location.reload();
+      }
+    } catch (err) {
+      console.error(err);
+      setHint('Lỗi lưu: ' + err.message);
+    } finally {
+      newBtnSave.disabled = false;
     }
   });
 </script>
-
-<script defer src="../js/checkin_khach_hang.js"></script>
 </body>
 </html>
