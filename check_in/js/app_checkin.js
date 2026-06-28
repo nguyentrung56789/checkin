@@ -110,7 +110,7 @@ const btnTorch  = $('btnTorch');
 const btnSound  = $('btnSound');
 const btnZoomIn = $('btnZoomIn');
 const btnZoomOut= $('btnZoomOut');
-const btnMenu   = $('btnMenu');
+const btnMenu   = $('btnMenu'); // nút Menu mới
 
 const toastEl   = $('toast');
 const bar       = $('bar');
@@ -271,7 +271,7 @@ function getGeoPermStateSafe(){
     : Promise.resolve(null);
 }
 
-function getGPSOnce(timeoutMs = 6000){ 
+function getGPSOnce(timeoutMs = 10000){ 
   return new Promise(resolve=>{
     if(!('geolocation' in navigator)) return resolve(null);
     navigator.geolocation.getCurrentPosition(
@@ -282,6 +282,9 @@ function getGPSOnce(timeoutMs = 6000){
   });
 }
 
+// ✅ đảm bảo: denied => báo + return false
+// ✅ prompt => tự gọi getCurrentPosition để bật popup xin quyền
+// ✅ granted => cố lấy 1 tọa độ hợp lệ (lat != 0)
 async function ensureGeoAllowedAndGet(){
   if(!('geolocation' in navigator)){
     toast('Thiết bị không hỗ trợ vị trí (GPS)', 'err', 3500);
@@ -297,11 +300,13 @@ async function ensureGeoAllowedAndGet(){
     return false;
   }
 
+  // st === 'prompt' hoặc null => gọi để bật popup xin quyền
   const r = await getGPSOnce();
 
+  // bị chặn ngay lúc popup
   if (r && r.err){
     const code = r.err.code;
-    if (code === 1){
+    if (code === 1){ // PERMISSION_DENIED
       toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
       openGeoHelp();
       return false;
@@ -319,6 +324,7 @@ async function ensureGeoAllowedAndGet(){
     return false;
   }
 
+  // lưu lại để các bước khác dùng (nếu cần)
   window.__myLatLng = { lat, lng };
   return true;
 }
@@ -377,8 +383,10 @@ async function startCam(){
       video.setAttribute('playsinline','');
       video.muted = true;
 
+      // Đợi metadata
       await new Promise(r => { video.onloadedmetadata = r; });
 
+      // BẮT BUỘC phải play() cho mobile
       try {
         await video.play();
       } catch (err) {
@@ -393,16 +401,14 @@ async function startCam(){
     if (btnShot) btnShot.disabled = false;
     await initZoom();
 
+    // 👇 luôn dùng mức zoom nhỏ nhất
     await setZoom(zoomMin);
     await tryApplyTorch(false);
 
     toast('Đã bật camera. GPS sẽ lấy khi bấm chụp.','ok');
 
-    // Không gọi Sheet khi mở camera để trang nhẹ hơn.
-    // Nếu cần bật lại kiểm tra gần 20m, mở comment 3 dòng dưới.
-    // setTimeout(() => {
-    //   afterCameraStartedCheck20m().catch(()=>{});
-    // }, 200);
+    // Không gọi Sheet/GPS khi mở camera để trang nhẹ hơn.
+    // GPS chỉ lấy khi bấm chụp ảnh.
 
   }catch(e){
     console.error(e);
@@ -561,7 +567,7 @@ btnShot && (btnShot.onclick = async ()=>{
     if (!lat || lat === 0 || !lng || lng === 0){
       toast('⚠️ Chưa có vị trí. Hãy bật GPS rồi chụp lại.', 'err', 3500);
       try{ alert('⚠️ Chưa có vị trí. Hãy bật GPS/vị trí rồi chụp lại.'); }catch{}
-      return;
+      return; // THOÁT, KHÔNG ĐI TIẾP
     }
 
     const mime = 'image/jpeg';
@@ -582,28 +588,33 @@ btnShot && (btnShot.onclick = async ()=>{
 
     targetUrl.searchParams.set('lat', String(lat));
     targetUrl.searchParams.set('lng', String(lng));
-    targetUrl.searchParams.set('lag', String(lat));
+    targetUrl.searchParams.set('lag', String(lat)); // giữ nguyên theo bạn
     targetUrl.searchParams.set('ma_nv', MA_NV);
     targetUrl.searchParams.set('ten_nv', TEN_NV);
 
     if (MA_KH) targetUrl.searchParams.set('ma_kh', MA_KH);
     if (MA_HD) targetUrl.searchParams.set('ma_hd', MA_HD);
 
-    targetUrl.searchParams.set('img', 'session');
+targetUrl.searchParams.set('img', 'session');
 
-    /*
-      Mỗi lần chụp ảnh mới từ app_checkin,
-      mở lại danh sách KH mới.
+/*
+  Mỗi lần chụp ảnh mới từ app_checkin,
+  tạo shot_id mới để trang checkin_khach_hang biết đây là lượt chụp mới.
+*/
+const shotId = String(Date.now());
+targetUrl.searchParams.set('shot_id', shotId);
+sessionStorage.setItem('CHECKIN_CURRENT_SHOT_ID', shotId);
 
-      Xóa toàn bộ khóa tạm của nút Mã KH trên chính trình duyệt/tab hiện tại.
-      Khi mở checkin_khach_hang.html:
-      - Các nút Mã KH sẽ hiện lại bình thường.
-      - Chỉ những KH đã check-in cùng ngày theo dữ liệu thật mới bị mờ.
-    */
-    sessionStorage.removeItem('CLICKED_CHECKIN_BROWSER_V1');
-    sessionStorage.removeItem('CHECKIN_BROWSER_DONE_V1');
+/*
+  Xóa toàn bộ khóa tạm của nút Mã KH trên chính trình duyệt/tab hiện tại.
+  Khi mở checkin_khach_hang.html:
+  - Các nút Mã KH sẽ hiện lại bình thường.
+  - Chỉ những KH đã check-in cùng ngày theo dữ liệu thật mới bị mờ.
+*/
+sessionStorage.removeItem('CLICKED_CHECKIN_BROWSER_V1');
+sessionStorage.removeItem('CHECKIN_BROWSER_DONE_V1');
 
-    location.assign(targetUrl.toString());
+location.assign(targetUrl.toString());
 
   } catch (err) {
     console.error(err);
@@ -622,25 +633,45 @@ btnMenu && (btnMenu.onclick = ()=>{
 });
 
 /* ================== AUTO BOOT ================== */
+
+// helper: đảm bảo stage + UI hiện ra (kể cả khi chưa bật cam)
 function showStage(){
   if (stage && !stage.classList.contains('ready')) {
     stage.classList.add('ready');
   }
 }
 
-// Mở trang nhanh: không tự gọi GPS/camera khi vừa vào trang.
-// Bấm Cam chỉ mở camera. GPS chỉ lấy khi bấm chụp ảnh.
-showStage();
+async function getPermState(name){
+  try{
+    if (!navigator.permissions?.query) return null;
+    const p = await navigator.permissions.query({ name });
+    return p.state;
+  }catch{
+    return null;
+  }
+}
 
-if (btnShot) btnShot.disabled = true;
+// Nếu trình duyệt đã lưu quyền camera thì tự mở camera.
+// Không kiểm tra GPS ở đây. GPS chỉ lấy khi bấm chụp ảnh.
+(async () => {
+  showStage();
+  if (btnShot) btnShot.disabled = true;
 
-setTimeout(() => {
+  const camState = await getPermState('camera');
+
+  if (camState === 'granted') {
+    toast('Đang mở camera...', 'info', 1200);
+    await startCam();
+    return;
+  }
+
   toast('Bấm nút "Cam" để mở camera.', 'info', 2200);
-}, 300);
+})();
 
 /* Khi tab ẩn/hiện lại */
 document.addEventListener('visibilitychange', () => { 
   if (document.hidden) {
+    // Ẩn tab → tắt camera cho nhẹ máy
     stopCam();
   } else {
     showStage();
