@@ -271,13 +271,13 @@ function getGeoPermStateSafe(){
     : Promise.resolve(null);
 }
 
-function getGPSOnce(){ 
+function getGPSOnce(timeoutMs = 6000){ 
   return new Promise(resolve=>{
     if(!('geolocation' in navigator)) return resolve(null);
     navigator.geolocation.getCurrentPosition(
       p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
       err=>resolve({err}),
-      { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+      { enableHighAccuracy:true, timeout:timeoutMs, maximumAge:30000 }
     );
   });
 }
@@ -404,9 +404,11 @@ async function startCam(){
 
     toast('Đã bật camera','ok');
 
-    setTimeout(() => {
-      afterCameraStartedCheck20m().catch(()=>{});
-    }, 200);
+    // Không gọi Sheet khi mở camera để trang nhẹ hơn.
+    // Nếu cần bật lại kiểm tra gần 20m, mở comment 3 dòng dưới.
+    // setTimeout(() => {
+    //   afterCameraStartedCheck20m().catch(()=>{});
+    // }, 200);
 
   }catch(e){
     console.error(e);
@@ -619,52 +621,15 @@ function showStage(){
   }
 }
 
-(async () => {
-  try {
-    if (navigator.permissions && navigator.permissions.query) {
-      const camPerm = await navigator.permissions.query({ name: 'camera' });
+// Mở trang nhanh: không tự gọi GPS/camera khi vừa vào trang.
+// Chỉ khi bấm nút Cam mới xin GPS và mở camera.
+showStage();
 
-      let geoPerm = null;
+if (btnShot) btnShot.disabled = true;
 
-      try {
-        geoPerm = await navigator.permissions.query({ name: 'geolocation' });
-      } catch (_) {}
-
-      const camGranted = camPerm.state === 'granted';
-      const geoGranted = geoPerm ? (geoPerm.state === 'granted') : false;
-
-      if (camGranted && geoGranted) {
-        const g = await getGPSOnce();
-        const ok = !!(g && !g.err && g.lat && g.lng && g.lat !== 0 && g.lng !== 0);
-
-        if (ok) {
-          await startCam();
-        } else {
-          showStage();
-          if (btnShot) btnShot.disabled = true;
-          toast('Bật vị trí (GPS) rồi bấm "Bật camera".', 'info', 3000);
-        }
-      } else {
-        showStage();
-        if (btnShot) btnShot.disabled = true;
-        toast('Bấm nút "Bật camera" để mở cam (sẽ yêu cầu GPS trước).', 'info', 3200);
-      }
-
-      camPerm.onchange = () => {
-        if (camPerm.state === 'granted') {
-          toast('Đã cấp quyền camera, bấm "Bật camera" để dùng.', 'ok', 2500);
-        }
-      };
-    } else {
-      showStage();
-      if (btnShot) btnShot.disabled = true;
-      toast('Bấm nút "Bật camera" để mở cam (sẽ yêu cầu GPS trước).', 'info', 3200);
-    }
-  } catch (e) {
-    console.warn('Auto boot error', e);
-    showStage();
-  }
-})();
+setTimeout(() => {
+  toast('Bấm nút "Cam" để mở camera.', 'info', 2200);
+}, 300);
 
 /* Khi tab ẩn/hiện lại */
 document.addEventListener('visibilitychange', () => { 
