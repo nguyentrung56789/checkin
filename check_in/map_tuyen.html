@@ -39,6 +39,7 @@
       display:flex;
       gap:8px;
       width:100%;
+      align-items:center;
     }
     .row select, #searchBox{
       flex:1;
@@ -50,6 +51,10 @@
       background:white;
     }
     #gpsBtn{
+      position:fixed;
+      left:10px;
+      top:104px;
+      z-index:2000;
       width:40px;
       height:40px;
       border-radius:50%;
@@ -61,7 +66,6 @@
       box-shadow:0 4px 10px rgba(0,0,0,0.3);
       font-size:20px;
       cursor:pointer;
-      flex:0 0 40px;
     }
     .mk-red,
     .mk-orange,
@@ -87,6 +91,11 @@
       width:100%;
     }
     #searchBox{ flex:1.2; }
+    #levelFilter,
+    #nvMulti{
+      flex:1;
+      min-width:0;
+    }
     .ward-multi{
       flex:1;
       min-width:0;
@@ -161,18 +170,21 @@
       #gpsBtn{
         width:38px;
         height:38px;
-        flex-basis:38px;
+        top:106px;
+        left:8px;
       }
     }
     @media (max-width:430px){
-      .row{ flex-wrap:wrap; }
-      #levelFilter{ flex:1 1 calc(100% - 46px); }
-      #nvMulti{ flex:1 1 100%; }
-      .search-row{ flex-direction:column; }
+      .row,
+      .search-row{
+        flex-direction:row;
+      }
+      #levelFilter,
+      #nvMulti,
       #searchBox,
       .ward-multi{
-        width:100%;
-        flex:none;
+        width:auto;
+        flex:1 1 0;
       }
       .ward-panel{
         max-height:48vh;
@@ -185,8 +197,6 @@
 
 <div class="top-controls">
   <div class="row">
-    <button id="gpsBtn">📍</button>
-
     <select id="levelFilter">
       <option value="">Tất cả</option>
       <option value="1">1 màu đỏ check in về (chưa có số đt)</option>
@@ -223,14 +233,15 @@
   </div>
 </div>
 
+<button id="gpsBtn">📍</button>
 <div id="map"></div>
 
 <script>
 (async function(){
 
   const params = new URLSearchParams(location.search);
-  const currentMaNV = String(params.get("ma_nv") || "").trim();
-  const currentTenNV = String(params.get("ten_nv") || "").trim();
+  let currentMaNV = String(params.get("ma_nv") || "").trim();
+  let currentTenNV = String(params.get("ten_nv") || "").trim();
 
   function safeParseStorage(key, storage){
     try { return JSON.parse(storage.getItem(key) || "null"); }
@@ -249,16 +260,22 @@
 
   const loggedNV = getLoggedNV();
 
-  if (!currentMaNV) {
-    try { alert("Thiếu mã nhân viên. Vui lòng vào từ Trang chính."); } catch {}
-    location.replace("./main.html");
-    throw new Error("Missing ma_nv");
-  }
-
   if (!loggedNV || !loggedNV.ma_nv || loggedNV.hoat_dong === false) {
     try { alert("Bạn chưa đăng nhập."); } catch {}
     location.replace("./login.html");
     throw new Error("Not logged in");
+  }
+
+  if (!currentMaNV) {
+    currentMaNV = String(loggedNV.ma_nv || "").trim();
+    currentTenNV = currentTenNV || String(loggedNV.ten_nv || "").trim();
+
+    try {
+      const nextUrl = new URL(location.href);
+      nextUrl.searchParams.set("ma_nv", currentMaNV);
+      if (currentTenNV) nextUrl.searchParams.set("ten_nv", currentTenNV);
+      history.replaceState(null, "", nextUrl.toString());
+    } catch {}
   }
 
   if (String(loggedNV.ma_nv) !== String(currentMaNV)) {
