@@ -5,206 +5,195 @@
   <script> if (!checkAccess()) {}</script>
 
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#111827" />
-  <title>Check-in Camera</title>
-
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Trang chính</title>
   <style>
     :root{
-      --bar-h:86px;
-      --blue:#4da3ff;
-      --green:#16a34a;
-      --gray:#334155;
-      --text:#f8fafc;
-      --muted:#b7c3d4;
+      --bg:#0b1020;--panel:#12182b;--muted:#8aa0b6;
+      --text:#e9f0f6;--accent:#4da3ff;--ok:#22c55e;--warn:#f59e0b;
     }
     *{box-sizing:border-box}
     html,body{
-      margin:0;
-      padding:0;
-      width:100%;
-      height:100%;
-      min-height:-webkit-fill-available;
-      background:#050816;
-      color:var(--text);
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      overflow:hidden;
+      margin:0;height:100%;
+      background:var(--bg);color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
-    .stage{
-      position:fixed;
-      inset:0;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      background:#050816;
-      z-index:1;
+    .topbar{
+      position:sticky;top:0;z-index:50;
+      display:flex;align-items:center;
+      padding:12px 16px;background:var(--bg);
+      border-bottom:1px solid #12182b;
     }
-    video,.photo,canvas{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      display:block;
-      background:#050816;
+    .topbar .title{font-weight:700}
+    .topbar .spacer{flex:1}
+    .usermenu{position:relative}
+    .userbtn{
+      display:flex;align-items:center;gap:8px;
+      background:#12182b;color:#e9f0f6;
+      border:1px solid #22304a;border-radius:10px;
+      padding:8px 12px;cursor:pointer;font-weight:600;
     }
-    video,canvas{pointer-events:none}
-    canvas{display:none}
-    .top{
-      position:fixed;
-      top:0;
-      left:0;
-      right:0;
-      z-index:60;
-      display:flex;
-      align-items:center;
-      gap:12px;
-      padding:14px;
-      padding-top:calc(14px + env(safe-area-inset-top));
-      background:linear-gradient(180deg,rgba(0,0,0,.58),rgba(0,0,0,0));
+    .userbtn:focus{outline:2px solid #4da3ff55;outline-offset:2px}
+    .usericon{opacity:.85}
+    .caret{opacity:.8;margin-left:4px}
+    .dropdown{
+      position:absolute;right:0;top:calc(100% + 8px);
+      min-width:200px;background:#0f1830;border:1px solid #22304a;
+      box-shadow:0 10px 30px rgba(0,0,0,.45);
+      border-radius:12px;padding:6px;display:none;
     }
-    .who{
-      min-width:0;
-      flex:1;
-      font-size:20px;
-      font-weight:900;
-      line-height:1.2;
-      text-shadow:0 2px 8px rgba(0,0,0,.45);
+    .dropdown.open{display:block}
+    .dropdown .item{
+      width:100%;text-align:left;background:transparent;border:0;
+      color:#e6edff;padding:10px 12px;border-radius:8px;cursor:pointer;
     }
-    .who small{
-      display:block;
-      margin-top:4px;
-      color:var(--muted);
-      font-size:13px;
-      font-weight:700;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
+    .dropdown .item:hover{background:#1a2542}
+    .dropdown .item.danger{color:#ff6b6b}
+    .center{
+      min-height:calc(100dvh - 64px);
+      display:flex;align-items:center;justify-content:center;
+      padding:24px;
     }
-    .bar{
-      position:fixed;
-      left:0;
-      right:0;
-      bottom:0;
-      z-index:60;
-      min-height:var(--bar-h);
-      padding:12px;
-      padding-bottom:calc(12px + env(safe-area-inset-bottom));
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      gap:12px;
-      background:linear-gradient(0deg,rgba(0,0,0,.76),rgba(0,0,0,0));
-    }
+    .wrap{text-align:center}
+    h1{margin-bottom:28px;font-size:26px}
     .btn{
-      appearance:none;
-      border:1px solid rgba(255,255,255,.14);
-      min-height:46px;
-      padding:10px 16px;
-      border-radius:14px;
-      color:#fff;
-      font:inherit;
-      font-size:15px;
-      font-weight:900;
-      cursor:pointer;
-      white-space:nowrap;
-      box-shadow:0 10px 26px rgba(0,0,0,.28);
+      display:inline-block;padding:14px 28px;margin:10px;border:0;
+      border-radius:14px;font-size:17px;font-weight:600;cursor:pointer;
+      transition:.2s;color:#001226;
     }
-    .btn:disabled{
-      opacity:.45;
-      cursor:not-allowed;
-      filter:grayscale(.15);
-    }
-    .btn-blue{background:var(--blue)}
-    .btn-green{background:var(--green)}
-    .btn-gray{background:var(--gray)}
-    .btn-shot{
-      width:74px;
-      height:74px;
-      padding:0;
-      border-radius:999px;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size:30px;
-      border:6px solid rgba(255,255,255,.55);
-      background:#127a3a;
-    }
-    .status{
-      position:fixed;
-      left:12px;
-      right:12px;
-      bottom:calc(var(--bar-h) + 18px);
-      z-index:55;
-      display:grid;
-      gap:8px;
-      pointer-events:none;
-    }
-    .pill{
-      width:max-content;
-      max-width:100%;
-      padding:8px 12px;
-      border-radius:999px;
-      background:rgba(15,23,42,.72);
-      border:1px solid rgba(255,255,255,.14);
-      color:#eef5ff;
-      font-size:14px;
-      font-weight:700;
-      backdrop-filter:blur(10px);
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-      box-shadow:0 8px 24px rgba(0,0,0,.22);
-    }
-    .hint{
-      position:fixed;
-      left:18px;
-      right:18px;
-      bottom:calc(var(--bar-h) + 86px);
-      z-index:50;
-      color:#dce8f5;
-      text-align:center;
-      line-height:1.45;
-      text-shadow:0 2px 8px rgba(0,0,0,.58);
-      pointer-events:none;
-    }
-    @media (max-width:520px){
-      :root{--bar-h:92px}
-      .top{gap:10px}
-      .who{font-size:18px}
-      .btn{min-height:44px;padding:9px 13px}
-      .btn-shot{width:68px;height:68px;font-size:28px}
-      .hint{bottom:calc(var(--bar-h) + 84px);font-size:14px}
-    }
+    .btn:hover{filter:brightness(1.1)}
+    .btn-checkin{background:var(--accent)}
+    .btn-phan-tich{background:var(--ok)}
+    .btn-bao-cao{background:var(--warn)}
   </style>
 </head>
 <body>
-  <main class="stage">
-    <video id="video" autoplay playsinline muted></video>
-    <img id="photo" class="photo" alt="Ảnh check-in" hidden>
-    <canvas id="canvas"></canvas>
+  <header class="topbar">
+    <div class="title">📋 Trang chính</div>
+    <div class="spacer"></div>
 
-    <div class="top">
-      <button id="btnBack" class="btn btn-gray" type="button">←</button>
-      <div class="who">
-        Check-in
-        <small id="nvText">Đang kiểm tra nhân viên...</small>
+    <div class="usermenu" id="userMenu">
+      <button class="userbtn" id="userBtn" aria-haspopup="true" aria-expanded="false" title="Tài khoản">
+        <span class="usericon">👤</span>
+        <span class="username" id="username">Tài khoản</span>
+        <span class="caret">▾</span>
+      </button>
+      <div class="dropdown" id="userDropdown" role="menu" aria-hidden="true">
+        <button class="item danger" id="logoutBtn">Đăng xuất</button>
       </div>
-      <button id="btnCustomers" class="btn btn-blue" type="button">KH</button>
     </div>
+  </header>
 
-    <div class="hint" id="hint">Bấm Cam để mở camera, sau đó bấm nút chụp ảnh.</div>
-
-    <div class="status">
-      <div class="pill" id="gpsText">GPS: lấy khi chụp</div>
-      <div class="pill" id="photoText">Ảnh: chưa chụp</div>
-    </div>
-
-    <div class="bar">
-      <button id="btnStart" class="btn btn-blue" type="button">Cam</button>
-      <button id="btnShot" class="btn btn-green btn-shot" type="button" disabled>📸</button>
-      <button id="btnRetake" class="btn btn-gray" type="button" disabled>Chụp lại</button>
+  <main class="center">
+    <div class="wrap">
+      <h1>Chọn chức năng</h1>
+      <button class="btn btn-checkin" onclick="go('app_checkin.html')">✅ Check-in</button>
+      <button class="btn btn-phan-tich" onclick="go('map_tuyen.html')">📊 Xem bản đồ</button>
+      <button class="btn btn-bao-cao" onclick="go('baocao.html')">📑 Báo cáo</button>
     </div>
   </main>
 
-  <script defer src="js/app_checkin.js"></script>
+  <script>
+    function safeParse(s){
+      try { return JSON.parse(s); } catch { return null; }
+    }
+
+    function getNV(){
+      const nv = safeParse(localStorage.getItem('nv'));
+      if (nv && nv.ma_nv) {
+        return {
+          ma_nv: nv.ma_nv,
+          ten_nv: nv.ten_nv || '',
+          hoat_dong: nv.hoat_dong !== false
+        };
+      }
+
+      const ctx = safeParse(sessionStorage.getItem('nv_ctx'));
+      if (ctx && ctx.ma_nv) {
+        return {
+          ma_nv: ctx.ma_nv,
+          ten_nv: ctx.ten_nv || '',
+          hoat_dong: ctx.hoat_dong !== false
+        };
+      }
+
+      return null;
+    }
+
+    function go(path){
+      const user = getNV();
+
+      if (!user || !user.ma_nv || user.hoat_dong === false) {
+        location.replace('./login.html');
+        return;
+      }
+
+      if (path === 'app_checkin.html') {
+        const url = new URL(path, location.href);
+        url.searchParams.set('ma_nv', user.ma_nv);
+        url.searchParams.set('ten_nv', user.ten_nv || '');
+        location.href = url.toString();
+        return;
+      }
+
+      location.href = path;
+    }
+
+    (function initUserMenu(){
+      const btn = document.getElementById('userBtn');
+      const menu = document.getElementById('userDropdown');
+      const nameEl = document.getElementById('username');
+
+      const user = getNV();
+
+      if (!user || !user.ma_nv || user.hoat_dong === false) {
+        location.replace('./login.html');
+        return;
+      }
+
+      nameEl.textContent = user.ten_nv || user.ma_nv || 'Tài khoản';
+
+      function openMenu(){
+        menu.classList.add('open');
+        btn.setAttribute('aria-expanded','true');
+        menu.setAttribute('aria-hidden','false');
+      }
+
+      function closeMenu(){
+        menu.classList.remove('open');
+        btn.setAttribute('aria-expanded','false');
+        menu.setAttribute('aria-hidden','true');
+      }
+
+      function toggleMenu(){
+        menu.classList.contains('open') ? closeMenu() : openMenu();
+      }
+
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        toggleMenu();
+      });
+
+      document.addEventListener('click', function(e){
+        if (!menu.contains(e.target) && e.target !== btn) closeMenu();
+      });
+
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape') closeMenu();
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', function(){
+        closeMenu();
+
+        try {
+          localStorage.removeItem('nv');
+          localStorage.removeItem('last_ma_nv');
+          sessionStorage.removeItem('nv_ctx');
+        } catch {}
+
+        location.replace('./login.html');
+      });
+    })();
+  </script>
 </body>
 </html>
