@@ -285,12 +285,11 @@
       Còn hoạt động: <b>${r.con_hoat_dong === false ? "Không" : "Có"}</b>
 
       <br><br>
-      <a href="${formLink}"
-         target="_blank"
-         rel="noopener"
-         style="display:block;padding:10px 12px;background:#16a34a;color:white;text-align:center;border-radius:8px;text-decoration:none;font-weight:700;">
+      <button type="button"
+         data-form-link="${esc(formLink)}"
+         style="display:block;width:100%;padding:10px 12px;background:#16a34a;color:white;text-align:center;border:0;border-radius:8px;text-decoration:none;font-weight:700;cursor:pointer;">
          Mở form khách hàng
-      </a>
+      </button>
 
       ${rowId ? `<button type="button"
          data-stop-id="${esc(rowId)}"
@@ -355,7 +354,27 @@
     }
   }
 
+  function openCustomerForm(url){
+    const w = Math.min(430, Math.max(320, window.screen.width - 24));
+    const h = Math.min(760, Math.max(520, window.screen.height - 80));
+    const left = Math.max(0, Math.round((window.screen.width - w) / 2));
+    const top = Math.max(0, Math.round((window.screen.height - h) / 2));
+
+    window.open(
+      url,
+      "formKhachHang",
+      `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+  }
+
   document.addEventListener("click", e => {
+    const formBtn = e.target.closest("[data-form-link]");
+    if (formBtn) {
+      e.preventDefault();
+      openCustomerForm(formBtn.dataset.formLink);
+      return;
+    }
+
     const btn = e.target.closest("[data-stop-id]");
     if (!btn) return;
 
