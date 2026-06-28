@@ -121,6 +121,20 @@
     .ward-legend b{ display:block; margin-bottom:3px; }
     .lg-row{ display:flex; align-items:center; gap:6px; }
     .lg-color{ width:18px; height:10px; border-radius:3px; border:1px solid rgba(0,0,0,0.2); }
+    .geo-status{
+      position:fixed;
+      left:10px;
+      bottom:18px;
+      z-index:2001;
+      background:rgba(255,255,255,0.95);
+      color:#111827;
+      border-radius:8px;
+      box-shadow:0 8px 18px rgba(0,0,0,0.18);
+      padding:7px 9px;
+      font-size:12px;
+      max-width:280px;
+    }
+    .geo-status.is-hidden{ display:none; }
   </style>
 </head>
 
@@ -164,6 +178,8 @@
   <div class="lg-row"><span class="lg-color" style="background:#1d4ed8"></span>Trên 15 khách</div>
 </div>
 
+<div id="geoStatus" class="geo-status is-hidden"></div>
+
 <script>
 (async function(){
 
@@ -172,6 +188,10 @@
     "https://huggingface.co/datasets/myleo198/sapnhap-bando-vn/resolve/main/geo/communes.geojson",
     "https://huggingface.co/datasets/tmquan/sapnhap-bando-vn/resolve/main/geo/communes.geojson"
   ];
+  const HAI_PHONG_BOUNDS = L.latLngBounds(
+    [20.42, 106.23],
+    [21.18, 107.17]
+  );
 
   const params = new URLSearchParams(location.search);
   const currentMaNV = String(params.get("ma_nv") || "").trim();
@@ -221,6 +241,9 @@
   );
 
   const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
+  map.createPane("wardPane");
+  map.getPane("wardPane").style.zIndex = 350;
+  map.getPane("wardPane").style.pointerEvents = "auto";
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
     maxZoom:19
@@ -298,6 +321,11 @@
     const p = feature && feature.properties ? feature.properties : {};
     return (
       p.ten ||
+      p.Ten ||
+      p.TEN_XA ||
+      p.TEN_DVHC ||
+      p.ten_don_vi ||
+      p.tendonvi ||
       p.name ||
       p.ten_xa ||
       p.tenxa ||
@@ -313,30 +341,77 @@
 
   function isHaiPhongFeature(feature){
     const p = feature && feature.properties ? feature.properties : {};
+    const codeText = [
+      p.parent_ma,
+      p.ma_tinh,
+      p.matinh,
+      p.province_code,
+      p.MA_TINH
+    ].map(v => String(v || "").trim()).join(" ");
+
     const text = [
       p.parent_ten,
+      p.parent_ten_xa,
       p.parent_name,
       p.tinh,
       p.tentinh,
       p.ten_tinh,
       p.province,
+      p.TINH,
+      p.TEN_TINH,
       p.address,
       p.embed_text
     ].map(v => normalizeName(v)).join(" ");
 
-    return text.includes("hai phong");
+    return text.includes("hai phong") || /\b31\b/.test(codeText);
+  }
+
+  function featureIntersectsHaiPhongBounds(feature){
+    try {
+      const layer = L.geoJSON(feature);
+      return HAI_PHONG_BOUNDS.intersects(layer.getBounds());
+    } catch {
+      return false;
+    }
   }
 
   function filterHaiPhongGeoJson(geo){
     if (!geo || !Array.isArray(geo.features)) return geo;
 
     const hpFeatures = geo.features.filter(isHaiPhongFeature);
-    if (!hpFeatures.length) return geo;
+    if (hpFeatures.length) {
+      return {
+        type:"FeatureCollection",
+        features:hpFeatures
+      };
+    }
 
-    return {
-      type:"FeatureCollection",
-      features:hpFeatures
-    };
+    const byBounds = geo.features.filter(featureIntersectsHaiPhongBounds);
+    if (byBounds.length) {
+      return {
+        type:"FeatureCollection",
+        features:byBounds
+      };
+    }
+
+    return geo;
+  }
+
+  function setGeoStatus(text){
+    const el = document.getElementById("geoStatus");
+    if (!el) return;
+    if (!text) {
+      el.classList.add("is-hidden");
+      el.textContent = "";
+      return;
+    }
+    el.textContent = text;
+    el.classList.remove("is-hidden");
+  }
+
+  function describeFeatureFields(geo){
+    const p = geo?.features?.[0]?.properties || {};
+    return Object.keys(p).slice(0, 12).join(", ");
   }
 
   function getWardKeyFromRow(row){
@@ -475,6 +550,7 @@
   }
 
   async function fetchGeoJsonFromUrl(url){
+    setGeoStatus("Đang tải ranh giới phường...");
     const res = await fetch(url, { cache:"no-store" });
     if (!res.ok) throw new Error(`Không tải được ${url}: ${res.status}`);
 
@@ -494,6 +570,7 @@
         const geo = await fetchGeoJsonFromUrl(url);
         if (geo && Array.isArray(geo.features) && geo.features.length) {
           console.log("Đã tải GeoJSON:", url, geo.features.length, "phường/xã");
+          setGeoStatus(`Đã tải ${geo.features.length} vùng phường/xã.`);
           return geo;
         }
       } catch (err) {
@@ -501,6 +578,7 @@
       }
     }
 
+    setGeoStatus("Không tải được GeoJSON phường mới.");
     return null;
   }
 
@@ -645,12 +723,18 @@
       .filter(x => x.key && x.name)
       .sort((a, b) => a.name.localeCompare(b.name, "vi"));
 
+    wardFilter.innerHTML = `<option value="">Tất cả phường</option>`;
+
     rows.forEach(x => {
       const opt = document.createElement("option");
       opt.value = x.key;
       opt.textContent = `${x.name} (${x.count})`;
       wardFilter.appendChild(opt);
     });
+
+    if (!rows.length) {
+      setGeoStatus(`Đã tải GeoJSON nhưng chưa nhận được tên phường. Các cột có trong file: ${describeFeatureFields(geo)}`);
+    }
   }
 
   function createWardLayer(geo){
@@ -658,6 +742,7 @@
     buildWardFilter(geo);
 
     wardLayer = L.geoJSON(geo, {
+      pane:"wardPane",
       style: wardStyle,
       onEachFeature: (feature, layer) => {
         const name = feature.properties.__wardName || "Không rõ tên";
@@ -698,6 +783,9 @@
 
     wardLayer.bringToBack();
     wardLegend.classList.remove("is-hidden");
+    if (wardFilter.options.length > 1) {
+      setGeoStatus("");
+    }
   }
 
   function updateWardLabels(){
