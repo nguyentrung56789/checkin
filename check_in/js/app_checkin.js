@@ -252,7 +252,7 @@ function toast(t,type='info',ms=2400){
   },ms);
 }
 
-/* ================== GPS (BẮT BUỘC TRƯỚC KHI BẬT CAM) ================== */
+/* ================== GPS (CHỈ LẤY KHI BẤM CHỤP) ================== */
 function openGeoHelp(){
   const msg =
 `⚠️ Bạn đã chặn quyền vị trí.
@@ -341,12 +341,6 @@ async function startCam(){
     stopCam();
     stage && stage.classList.remove('ready');
 
-    const gpsReady = await ensureGeoAllowedAndGet();
-    if (!gpsReady) {
-      if (btnShot) btnShot.disabled = true;
-      return;
-    }
-
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       throw new Error('Trình duyệt không hỗ trợ camera');
     }
@@ -402,7 +396,7 @@ async function startCam(){
     await setZoom(zoomMin);
     await tryApplyTorch(false);
 
-    toast('Đã bật camera','ok');
+    toast('Đã bật camera. GPS sẽ lấy khi bấm chụp.','ok');
 
     // Không gọi Sheet khi mở camera để trang nhẹ hơn.
     // Nếu cần bật lại kiểm tra gần 20m, mở comment 3 dòng dưới.
@@ -547,7 +541,20 @@ btnShot && (btnShot.onclick = async ()=>{
     await playShutter();
     drawToCanvas();
 
-    const gps = await getGPSOnce();
+    toast('Đang lấy vị trí GPS...', 'info', 1800);
+    const gps = await getGPSOnce(10000);
+
+    if (gps && gps.err){
+      if (gps.err.code === 1){
+        toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại GPS.', 'err', 4200);
+        openGeoHelp();
+        return;
+      }
+
+      toast('⚠️ Không lấy được GPS. Hãy bật vị trí rồi chụp lại.', 'err', 3500);
+      return;
+    }
+
     const lat = gps?.lat ?? 0;
     const lng = gps?.lng ?? 0;
 
@@ -622,7 +629,7 @@ function showStage(){
 }
 
 // Mở trang nhanh: không tự gọi GPS/camera khi vừa vào trang.
-// Chỉ khi bấm nút Cam mới xin GPS và mở camera.
+// Bấm Cam chỉ mở camera. GPS chỉ lấy khi bấm chụp ảnh.
 showStage();
 
 if (btnShot) btnShot.disabled = true;
@@ -639,7 +646,7 @@ document.addEventListener('visibilitychange', () => {
     showStage();
     if (!stream) {
       if (btnShot) btnShot.disabled = true;
-      toast('Bấm nút "Bật camera" để mở lại cam (sẽ yêu cầu GPS trước).', 'info', 2600);
+      toast('Bấm nút "Cam" để mở lại camera. GPS sẽ lấy khi chụp.', 'info', 2600);
     }
   }
 });
