@@ -3,107 +3,36 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Bản đồ Check-in KH</title>
-
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <title>Form khách hàng</title>
 
   <script src="./js/internal_key.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
+    *{ box-sizing:border-box; }
     html,body{
-      margin:0; padding:0;
-      height:100%;
-      overflow:hidden;
-      font-family:system-ui;
+      margin:0;
+      min-height:100%;
+      background:#f3f4f6;
+      color:#111827;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
     }
-    #map{
-      position:fixed;
-      inset:0;
-      width:100%;
-      height:100%;
-    }
-    .leaflet-control-zoom{ display:none !important; }
-    .top-controls{
-      position:fixed;
-      top:10px;
-      left:10px;
-      right:10px;
-      z-index:2000;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-    }
-    .row{
-      display:flex;
-      gap:8px;
-      width:100%;
-    }
-    .row select, #searchBox{
-      flex:1;
-      padding:6px 8px;
-      font-size:14px;
-      border-radius:8px;
-      border:1px solid #d1d5db;
-      background:white;
-    }
-    #gpsBtn{
-      width:40px;
-      height:40px;
-      border-radius:50%;
-      border:none;
-      background:white;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      box-shadow:0 4px 10px rgba(0,0,0,0.3);
-      font-size:20px;
-      cursor:pointer;
-      flex:0 0 40px;
-    }
-    .mk-red,
-    .mk-orange,
-    .mk-purple{
-      color:white;
-      width:26px;
-      height:26px;
-      border-radius:50%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border:2px solid white;
-      font-weight:600;
-      font-size:12px;
-      box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
-    }
-    .mk-red{ background:#ef4444; }
-    .mk-orange{ background:#f59e0b; }
-    .mk-purple{ background:#8b5cf6; }
-    .edit-modal{
-      position:fixed;
-      inset:0;
-      z-index:3000;
-      display:none;
-      align-items:center;
-      justify-content:center;
+    .wrap{
+      max-width:520px;
+      margin:0 auto;
       padding:14px;
-      background:rgba(15,23,42,0.45);
     }
-    .edit-modal.open{ display:flex; }
-    .edit-card{
-      width:min(520px,100%);
-      max-height:92vh;
-      overflow:auto;
+    .card{
       background:white;
-      border-radius:10px;
-      box-shadow:0 20px 50px rgba(15,23,42,0.25);
       border:1px solid #e5e7eb;
+      border-radius:10px;
+      box-shadow:0 12px 30px rgba(15,23,42,0.12);
+      overflow:hidden;
     }
-    .edit-head{
+    .head{
       position:sticky;
       top:0;
-      z-index:1;
+      z-index:5;
       display:flex;
       align-items:center;
       justify-content:space-between;
@@ -112,12 +41,12 @@
       background:white;
       border-bottom:1px solid #e5e7eb;
     }
-    .edit-title{
+    h1{
       margin:0;
       font-size:18px;
       line-height:1.2;
     }
-    .edit-close{
+    .close{
       width:34px;
       height:34px;
       border:0;
@@ -126,187 +55,164 @@
       font-size:22px;
       cursor:pointer;
     }
-    .edit-body{ padding:14px; }
-    .edit-body label{
+    form{ padding:14px; }
+    label{
       display:block;
       margin-top:10px;
       font-size:13px;
-      font-weight:700;
+      font-weight:800;
       color:#374151;
     }
-    .edit-body input,
-    .edit-body textarea{
+    input,textarea,select{
       width:100%;
       margin-top:5px;
       padding:10px 11px;
       border:1px solid #d1d5db;
       border-radius:8px;
+      background:white;
       font:inherit;
-      box-sizing:border-box;
     }
-    .edit-body textarea{
-      min-height:72px;
+    textarea{
+      min-height:76px;
       resize:vertical;
     }
-    .edit-grid{
+    .grid{
       display:grid;
       grid-template-columns:1fr 1fr;
       gap:10px;
     }
-    .edit-actions{
+    .actions{
       display:flex;
       gap:10px;
       margin-top:14px;
     }
-    .edit-actions button{
-      flex:1;
+    button{
       border:0;
       border-radius:8px;
       padding:11px;
       font:inherit;
       font-weight:800;
-      text-align:center;
-      text-decoration:none;
       cursor:pointer;
     }
-    #editSaveBtn{ background:#16a34a; color:white; }
-    #editCurrentLocationBtn{ background:#2563eb; color:white; }
-    #editMsg{
+    .actions button{ flex:1; }
+    #saveBtn{ background:#16a34a; color:white; }
+    #gpsBtn{ background:#2563eb; color:white; }
+    #reloadBtn{ background:#f59e0b; color:white; }
+    .msg{
       display:none;
       margin-top:12px;
       padding:10px 11px;
       border-radius:8px;
-      font-weight:700;
+      font-weight:800;
     }
-    #editMsg.ok{ display:block; background:#dcfce7; color:#166534; }
-    #editMsg.err{ display:block; background:#fee2e2; color:#991b1b; }
-    .open-edit-btn{
-      display:block;
-      width:100%;
-      padding:10px 12px;
-      background:#16a34a;
-      color:white;
-      text-align:center;
-      border:0;
-      border-radius:8px;
-      text-decoration:none;
-      font-weight:700;
-      cursor:pointer;
+    .msg.ok{ display:block; background:#dcfce7; color:#166534; }
+    .msg.err{ display:block; background:#fee2e2; color:#991b1b; }
+    .muted{
+      color:#6b7280;
+      font-size:12px;
+      margin-top:6px;
     }
-    @media (max-width:560px){
-      .edit-grid{ grid-template-columns:1fr; }
-      .edit-actions{ flex-direction:column; }
+    @media (max-width:520px){
+      .wrap{ padding:0; }
+      .card{ min-height:100vh; border-radius:0; border:0; }
+      .grid,.actions{ grid-template-columns:1fr; flex-direction:column; }
     }
   </style>
 </head>
 
 <body>
-
-<div class="top-controls">
-  <div class="row">
-    <button id="gpsBtn">📍</button>
-
-    <select id="levelFilter">
-      <option value="">Tất cả</option>
-      <option value="1">1 màu đỏ check in về (chưa có số đt)</option>
-      <option value="2">2 màu cam (đã check in có đt)</option>
-      <option value="3">3 màu tím (nv đã checkin ở tháng này)</option>
-      <option value="buy">Khách đã mua hàng</option>
-      <option value="nobuy">Khách chưa mua hàng</option>
-    </select>
-
-    <select id="nvFilter">
-      <option value="">Nhân viên</option>
-    </select>
-  </div>
-
-  <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
-</div>
-
-<div id="map"></div>
-
-<div id="editModal" class="edit-modal">
-  <div class="edit-card">
-    <div class="edit-head">
-      <h2 class="edit-title">Sửa khách hàng ID: <span id="editIdText"></span></h2>
-      <button id="editCloseBtn" class="edit-close" type="button">×</button>
+<div class="wrap">
+  <div class="card">
+    <div class="head">
+      <h1>Form khách hàng ID: <span id="idText"></span></h1>
+      <button id="closeBtn" class="close" type="button">×</button>
     </div>
-    <form id="editForm" class="edit-body">
+
+    <form id="form">
       <label>Mã KH</label>
-      <input id="edit_ma_kh" autocomplete="off">
+      <input id="ma_kh" autocomplete="off">
 
       <label>Tên KH</label>
-      <input id="edit_ten_kh" autocomplete="off">
+      <input id="ten_kh" autocomplete="off">
 
       <label>Địa chỉ</label>
-      <textarea id="edit_dia_chi"></textarea>
+      <textarea id="dia_chi"></textarea>
+
+      <label>Phường/Xã</label>
+      <input id="phuong_xa" autocomplete="off">
 
       <label>Điện thoại</label>
-      <input id="edit_dien_thoai" inputmode="tel" autocomplete="off">
+      <input id="dien_thoai" inputmode="tel" autocomplete="off">
 
       <label>Mã NV</label>
-      <input id="edit_ma_nv" autocomplete="off">
+      <input id="ma_nv" autocomplete="off">
 
-      <div class="edit-grid">
+      <label>Tên NV</label>
+      <input id="ten_nv" autocomplete="off">
+
+      <div class="grid">
         <div>
           <label>Kinh độ lng</label>
-          <input id="edit_lng" inputmode="decimal" autocomplete="off">
+          <input id="lng" inputmode="decimal" autocomplete="off">
         </div>
         <div>
           <label>Vĩ độ lat</label>
-          <input id="edit_lat" inputmode="decimal" autocomplete="off">
+          <input id="lat" inputmode="decimal" autocomplete="off">
         </div>
       </div>
 
-      <div class="edit-actions">
-        <button id="editSaveBtn" type="submit">Lưu cập nhật</button>
-        <button id="editCurrentLocationBtn" type="button">Lấy vị trí hiện tại</button>
+      <label>Đã mua hàng</label>
+      <select id="Da_mua_hang">
+        <option value="">Chưa rõ</option>
+        <option value="true">Đã mua</option>
+        <option value="false">Chưa mua</option>
+      </select>
+
+      <div class="actions">
+        <button id="saveBtn" type="submit">Lưu cập nhật</button>
+        <button id="gpsBtn" type="button">Lấy vị trí</button>
       </div>
 
-      <div id="editMsg"></div>
+      <div class="actions">
+        <button id="reloadBtn" type="button">Tải lại</button>
+      </div>
+
+      <div class="muted">Form popup này chỉ cần có ID khách hàng, không chặn ma_nv.</div>
+      <div id="msg" class="msg"></div>
     </form>
   </div>
 </div>
 
 <script>
 (async function(){
-
   const params = new URLSearchParams(location.search);
-  const currentMaNV = String(params.get("ma_nv") || "").trim();
+  const rowId = String(params.get("id") || "").trim();
 
-  function safeParseStorage(key, storage){
-    try { return JSON.parse(storage.getItem(key) || "null"); }
-    catch { return null; }
+  const idText = document.getElementById("idText");
+  const msg = document.getElementById("msg");
+  const form = document.getElementById("form");
+  const fields = ["ma_kh","ten_kh","dia_chi","phuong_xa","dien_thoai","ma_nv","ten_nv","lng","lat","Da_mua_hang"];
+
+  idText.textContent = rowId || "thiếu";
+
+  function showMsg(type, text){
+    msg.className = "msg " + type;
+    msg.textContent = text;
   }
 
-  function getLoggedNV(){
-    const nv = safeParseStorage("nv", localStorage);
-    if (nv && nv.ma_nv) return nv;
+  function input(id){
+    return document.getElementById(id);
+  }
 
-    const ctx = safeParseStorage("nv_ctx", sessionStorage);
-    if (ctx && ctx.ma_nv) return ctx;
-
+  function toBoolOrNull(v){
+    if (v === "true") return true;
+    if (v === "false") return false;
     return null;
   }
 
-  const loggedNV = getLoggedNV();
-
-  if (!currentMaNV) {
-    try { alert("Thiếu mã nhân viên. Vui lòng vào từ Trang chính."); } catch {}
-    location.replace("./main.html");
-    throw new Error("Missing ma_nv");
-  }
-
-  if (!loggedNV || !loggedNV.ma_nv || loggedNV.hoat_dong === false) {
-    try { alert("Bạn chưa đăng nhập."); } catch {}
-    location.replace("./login.html");
-    throw new Error("Not logged in");
-  }
-
-  if (String(loggedNV.ma_nv) !== String(currentMaNV)) {
-    try { alert("Mã nhân viên không khớp tài khoản đăng nhập."); } catch {}
-    location.replace("./main.html");
-    throw new Error("ma_nv mismatch");
+  if (!rowId) {
+    showMsg("err", "Thiếu id khách hàng trên URL.");
+    return;
   }
 
   const supabase = window.supabase.createClient(
@@ -317,521 +223,95 @@
     }
   );
 
-  const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
+  async function loadRow(){
+    showMsg("ok", "Đang tải dữ liệu...");
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
-    maxZoom:19
-  }).addTo(map);
-
-  function esc(v){
-    return String(v ?? "").replace(/[&<>"']/g, c => ({
-      "&":"&amp;",
-      "<":"&lt;",
-      ">":"&gt;",
-      '"':"&quot;",
-      "'":"&#039;"
-    }[c]));
-  }
-
-  function toNumber(v, fallback = 0){
-    if (v === null || v === undefined || v === "") return fallback;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  }
-
-  function normalizePhone(v){
-    return String(v || "").replace(/\D/g, "").trim();
-  }
-
-  function isBought(v){
-    if (v === true) return true;
-    if (v === false) return false;
-    const s = String(v || "").trim().toLowerCase();
-    return s === "true" || s === "1" || s === "yes" || s === "đã mua hàng" || s === "da mua hang";
-  }
-
-  function getLevel(row){
-    const hasPhone = normalizePhone(row.dien_thoai) !== "";
-    const checkinMonth = toNumber(row.checkin_thang, 0);
-
-    if (checkinMonth > 0) return "3";
-    if (hasPhone) return "2";
-    return "1";
-  }
-
-  function getColor(row){
-    const level = getLevel(row);
-    if (level === "3") return "purple";
-    if (level === "2") return "orange";
-    return "red";
-  }
-
-  function getMarkerClass(color){
-    if (color === "purple") return "mk-purple";
-    if (color === "orange") return "mk-orange";
-    return "mk-red";
-  }
-
-  function getMarkerLabel(row, index){
-    const n = toNumber(row.checkin_thang, 0);
-    if (n > 0) return n;
-    return index + 1;
-  }
-
-  async function fetchAllRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin_khach_hang")
-        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang,con_hoat_dong")
-        .eq("con_hoat_dong", true)
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allRows = allRows.concat(data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  async function fetchAllCheckinRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin")
-        .select("ma_kh")
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allRows = allRows.concat(data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  const data = await fetchAllRows();
-  const checkinHistory = await fetchAllCheckinRows();
-  const tongCheckinTheoKH = new Map();
-  const pointById = new Map();
-
-  checkinHistory.forEach(r => {
-    const khKey = String(r.ma_kh || "").trim();
-    if (!khKey) return;
-    const current = tongCheckinTheoKH.get(khKey) || 0;
-    tongCheckinTheoKH.set(khKey, current + 1);
-  });
-
-  let points = [];
-  let markers = [];
-
-  data.forEach((r,i)=>{
-    const lat = parseFloat(String(r.lat ?? "").trim());
-    const lng = parseFloat(String(r.lng ?? "").trim());
-    if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-    const stt = getMarkerLabel(r, i);
-    const level = getLevel(r);
-    const color = getColor(r);
-    const markerClass = getMarkerClass(color);
-    const bought = isBought(r.Da_mua_hang);
-
-    const icon = L.divIcon({
-      html:`<div class="${markerClass}">${esc(stt)}</div>`,
-      iconSize:[26,26],
-      iconAnchor:[13,13],
-      className:""
-    });
-
-    const rowId = String(r.id || "").trim();
-    const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-    const khKey = String(r.ma_kh || "").trim();
-    const tongCheckinKH = tongCheckinTheoKH.get(khKey) || 0;
-
-    const mk = L.marker([lat,lng],{icon}).bindPopup(`
-      <b>${esc(r.ten_kh || "Không tên")}</b><br>
-      ID: ${esc(r.id || "")}<br>
-      Mã KH: ${esc(r.ma_kh || "")}<br>
-      Địa chỉ: ${esc(r.dia_chi || "")}<br>
-      ĐT: ${esc(r.dien_thoai || "")}<br>
-      NV: ${esc(r.ten_nv || r.ma_nv || "")}<br>
-      Tổng check-in KH: <b>${esc(tongCheckinKH)}</b><br>
-      Checkin tháng: <b>${esc(toNumber(r.checkin_thang, 0))}</b><br>
-      Cấp độ: <b>${esc(level)}</b><br>
-      Màu: <b>${
-        color === "purple" ? "Tím" :
-        color === "orange" ? "Cam" :
-        "Đỏ"
-      }</b><br>
-      Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b><br>
-      Còn hoạt động: <b>${r.con_hoat_dong === false ? "Không" : "Có"}</b>
-
-      <br><br>
-      ${rowId ? `<button type="button" class="open-edit-btn" data-edit-id="${esc(rowId)}">
-         Mở form khách hàng
-      </button>` : ""}
-
-      ${rowId ? `<button type="button"
-         data-stop-id="${esc(rowId)}"
-         style="display:block;width:100%;margin-top:8px;padding:10px 12px;background:#dc2626;color:white;text-align:center;border:0;border-radius:8px;text-decoration:none;font-weight:700;cursor:pointer;">
-         Ngừng hoạt động
-      </button>` : ""}
-
-      <a href="${googleMapLink}"
-         target="_blank"
-         rel="noopener"
-         style="display:block;margin-top:8px;padding:10px 12px;background:#2563eb;color:white;text-align:center;border-radius:8px;text-decoration:none;font-weight:700;">
-         📍 Chỉ đường Google Map
-      </a>
-    `);
-
-    mk.addTo(map);
-
-    const point = {
-      stt,
-      lat,
-      lng,
-      marker: mk,
-      color,
-      level,
-      bought,
-      nvCode: String(r.ma_nv || "").trim(),
-      nvName: String(r.ten_nv || "").trim(),
-      nvPhone: String(r.dien_thoai || "").trim(),
-      row: r
-    };
-
-    points.push(point);
-    if (rowId) pointById.set(rowId, point);
-
-    markers.push(mk);
-  });
-
-  const editModal = document.getElementById("editModal");
-  const editForm = document.getElementById("editForm");
-  const editIdText = document.getElementById("editIdText");
-  const editCloseBtn = document.getElementById("editCloseBtn");
-  const editMsg = document.getElementById("editMsg");
-  const editFields = ["ma_kh", "ten_kh", "dia_chi", "dien_thoai", "ma_nv", "lng", "lat"];
-  let currentEditId = "";
-
-  function editInput(name){
-    return document.getElementById("edit_" + name);
-  }
-
-  function showEditMsg(type, text){
-    editMsg.className = type;
-    editMsg.textContent = text;
-  }
-
-  function clearEditMsg(){
-    editMsg.className = "";
-    editMsg.textContent = "";
-  }
-
-  function fillEditForm(row){
-    editFields.forEach(name => {
-      editInput(name).value = row[name] ?? "";
-    });
-  }
-
-  async function openEditPopup(id){
-    currentEditId = String(id || "").trim();
-    if (!currentEditId) return;
-
-    clearEditMsg();
-    editIdText.textContent = currentEditId;
-    editModal.classList.add("open");
-
-    const localPoint = pointById.get(currentEditId);
-    if (localPoint) fillEditForm(localPoint.row);
-
-    const { data: row, error } = await supabase
+    const { data, error } = await supabase
       .from("nv_checkin_khach_hang")
-      .select("id,ma_kh,ten_kh,dia_chi,dien_thoai,ma_nv,lng,lat")
-      .eq("id", Number(currentEditId))
+      .select("id,ma_kh,ten_kh,dia_chi,phuong_xa,dien_thoai,ma_nv,ten_nv,lng,lat,Da_mua_hang")
+      .eq("id", Number(rowId))
       .maybeSingle();
 
     if (error) {
-      showEditMsg("err", "Lỗi tải dữ liệu: " + error.message);
+      showMsg("err", "Lỗi tải dữ liệu: " + error.message);
       return;
     }
-    if (!row) {
-      showEditMsg("err", "Không tìm thấy id = " + currentEditId);
+    if (!data) {
+      showMsg("err", "Không tìm thấy khách hàng id = " + rowId);
       return;
     }
 
-    fillEditForm(row);
+    fields.forEach(name => {
+      if (name === "Da_mua_hang") {
+        input(name).value = data[name] === true ? "true" : data[name] === false ? "false" : "";
+      } else {
+        input(name).value = data[name] ?? "";
+      }
+    });
+
+    showMsg("ok", "Đã tải dữ liệu.");
   }
 
-  function closeEditPopup(){
-    editModal.classList.remove("open");
-    currentEditId = "";
-    clearEditMsg();
-  }
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
 
-  async function stopActiveById(id){
-    const stopId = String(id || "").trim();
-    if (!stopId) return;
-
-    const point = pointById.get(stopId);
-    const tenKh = point?.row?.ten_kh || "khách hàng này";
-
-    const ok = confirm(`Bạn muốn ${tenKh} ngừng hoạt động địa chỉ này?`);
-    if (!ok) return;
+    const payload = {};
+    fields.forEach(name => {
+      if (name === "Da_mua_hang") {
+        payload[name] = toBoolOrNull(input(name).value);
+        return;
+      }
+      const value = input(name).value.trim();
+      payload[name] = value === "" ? null : value;
+    });
 
     const { error } = await supabase
       .from("nv_checkin_khach_hang")
-      .update({ con_hoat_dong: false })
-      .eq("id", Number(stopId));
+      .update(payload)
+      .eq("id", Number(rowId));
 
     if (error) {
-      alert("Lỗi cập nhật: " + error.message);
+      showMsg("err", "Lỗi lưu: " + error.message);
       return;
     }
 
-    if (point) {
-      point.row.con_hoat_dong = false;
-      if (map.hasLayer(point.marker)) map.removeLayer(point.marker);
-      point.marker.closePopup();
-    }
-  }
+    showMsg("ok", "Đã lưu cập nhật.");
 
-  document.addEventListener("click", e => {
-    const stopBtn = e.target.closest("[data-stop-id]");
-    if (stopBtn) {
-      e.preventDefault();
-      stopActiveById(stopBtn.dataset.stopId);
-      return;
-    }
-
-    const btn = e.target.closest("[data-edit-id]");
-    if (!btn) return;
-    e.preventDefault();
-    openEditPopup(btn.dataset.editId);
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type:"khachhang-updated", id:rowId }, location.origin);
+      }
+    } catch {}
   });
 
-  editCloseBtn.onclick = closeEditPopup;
-  editModal.addEventListener("click", e => {
-    if (e.target === editModal) closeEditPopup();
-  });
-
-  document.getElementById("editCurrentLocationBtn").addEventListener("click", () => {
+  document.getElementById("gpsBtn").addEventListener("click", () => {
     if (!navigator.geolocation) {
-      showEditMsg("err", "Trình duyệt không hỗ trợ lấy vị trí hiện tại");
+      showMsg("err", "Trình duyệt không hỗ trợ GPS.");
       return;
     }
 
-    showEditMsg("ok", "Đang lấy vị trí hiện tại...");
-
+    showMsg("ok", "Đang lấy vị trí...");
     navigator.geolocation.getCurrentPosition(
       pos => {
-        editInput("lat").value = pos.coords.latitude;
-        editInput("lng").value = pos.coords.longitude;
-        showEditMsg("ok", "Đã lấy vị trí hiện tại. Bấm Lưu cập nhật để lưu.");
+        input("lat").value = pos.coords.latitude;
+        input("lng").value = pos.coords.longitude;
+        showMsg("ok", "Đã lấy vị trí. Bấm Lưu cập nhật để lưu.");
       },
       err => {
-        showEditMsg("err", "Không lấy được vị trí: " + (err.message || "Bạn chưa cấp quyền GPS"));
+        showMsg("err", "Không lấy được vị trí: " + (err.message || "Bạn chưa cấp quyền GPS"));
       },
       { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
     );
   });
 
-  editForm.addEventListener("submit", async e => {
-    e.preventDefault();
-    if (!currentEditId) return;
+  document.getElementById("reloadBtn").onclick = loadRow;
+  document.getElementById("closeBtn").onclick = () => window.close();
 
-    const payload = {};
-    editFields.forEach(name => {
-      const value = editInput(name).value.trim();
-      payload[name] = value === "" ? null : value;
-    });
-
-    const { data: updated, error } = await supabase
-      .from("nv_checkin_khach_hang")
-      .update(payload)
-      .eq("id", Number(currentEditId))
-      .select("id,ma_kh,ten_kh,dia_chi,dien_thoai,ma_nv,lng,lat")
-      .maybeSingle();
-
-    if (error) {
-      showEditMsg("err", "Lỗi lưu: " + error.message);
-      return;
-    }
-
-    const localPoint = pointById.get(currentEditId);
-    if (localPoint && updated) {
-      Object.assign(localPoint.row, updated);
-      localPoint.nvCode = String(updated.ma_nv || "").trim();
-      localPoint.nvPhone = String(updated.dien_thoai || "").trim();
-
-      const newLat = parseFloat(String(updated.lat ?? "").trim());
-      const newLng = parseFloat(String(updated.lng ?? "").trim());
-      if (Number.isFinite(newLat) && Number.isFinite(newLng)) {
-        localPoint.lat = newLat;
-        localPoint.lng = newLng;
-        localPoint.marker.setLatLng([newLat, newLng]);
-      }
-    }
-
-    showEditMsg("ok", "Đã lưu cập nhật");
-  });
-
-  if(markers.length){
-    const grp = L.featureGroup(markers);
-    map.fitBounds(grp.getBounds(),{padding:[50,50]});
-  }
-
-  let userMarker = null;
-  let userCircle = null;
-  let lastLat = null;
-  let lastLng = null;
-
-  function showGPS(lat,lng){
-    lastLat = lat;
-    lastLng = lng;
-
-    if(userMarker){
-      userMarker.setLatLng([lat,lng]);
-    } else {
-      userMarker = L.circleMarker([lat,lng],{
-        radius:8,
-        color:"#b91c1c",
-        fillColor:"#ef4444",
-        fillOpacity:1,
-        weight:3
-      }).addTo(map);
-    }
-
-    if(userCircle){
-      userCircle.setLatLng([lat,lng]);
-    } else {
-      userCircle = L.circle([lat,lng],{
-        radius:100,
-        color:"#f87171",
-        fillColor:"#fecaca",
-        fillOpacity:0.3,
-        weight:1
-      }).addTo(map);
-    }
-  }
-
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
-      showGPS(lat,lng);
-      map.setView([lat,lng],18);
-    });
-
-    navigator.geolocation.watchPosition(
-      pos=>{ showGPS(pos.coords.latitude, pos.coords.longitude); },
-      undefined,
-      { enableHighAccuracy:true, timeout:3000, maximumAge:0 }
-    );
-  }
-
-  document.getElementById("gpsBtn").onclick = ()=>{
-    if(lastLat && lastLng){
-      map.setView([lastLat,lastLng],18);
-    }
-  };
-
-  const nvFilter = document.getElementById("nvFilter");
-  const nvMap = new Map();
-
-  points.forEach(p => {
-    if (!p.nvCode) return;
-    if (!nvMap.has(p.nvCode)) {
-      const label = [p.nvCode, p.nvName].filter(Boolean).join(" - ") || p.nvCode;
-      nvMap.set(p.nvCode, label);
-    }
-  });
-
-  [...nvMap.entries()]
-    .sort((a, b) => a[1].localeCompare(b[1], "vi"))
-    .forEach(([code, label]) => {
-      const opt = document.createElement("option");
-      opt.value = code;
-      opt.textContent = label;
-      nvFilter.appendChild(opt);
-    });
-
-  const levelFilter = document.getElementById("levelFilter");
-  const searchBox = document.getElementById("searchBox");
-
-  function applyFilter(){
-    const fLevel = levelFilter.value;
-    const fNV = nvFilter.value;
-    const q = searchBox.value.trim().toLowerCase();
-
-    points.forEach(p=>{
-      const r = p.row;
-      let ok = true;
-
-      if (fLevel === "1" || fLevel === "2" || fLevel === "3") {
-        if (p.level !== fLevel) ok = false;
-      }
-
-      if (fLevel === "buy" && !p.bought) ok = false;
-      if (fLevel === "nobuy" && p.bought) ok = false;
-      if (fNV && p.nvCode !== fNV) ok = false;
-
-      if(q){
-        const text = `
-          ${r.id || ""}
-          ${r.ma_kh || ""}
-          ${r.ten_kh || ""}
-          ${r.dia_chi || ""}
-          ${r.dien_thoai || ""}
-          ${r.ghi_chu || ""}
-          ${r.ma_nv || ""}
-          ${r.ten_nv || ""}
-          ${r.checkin_thang || ""}
-          ${p.bought ? "da mua hang" : "chua mua hang"}
-        `.toLowerCase();
-
-        if(!text.includes(q)) ok = false;
-      }
-
-      if(ok){
-        if(!map.hasLayer(p.marker)) p.marker.addTo(map);
-      }else{
-        if(map.hasLayer(p.marker)) map.removeLayer(p.marker);
-      }
-    });
-
-    const remain = points.filter(p => map.hasLayer(p.marker));
-    if(remain.length === 1){
-      map.setView([remain[0].lat, remain[0].lng], 18);
-    }
-  }
-
-  levelFilter.onchange = applyFilter;
-  nvFilter.onchange = applyFilter;
-  searchBox.oninput = applyFilter;
-
+  await loadRow();
 })().catch(err => {
-  const msg = err && err.message ? err.message : "";
-  if (msg === "Missing ma_nv" || msg === "Not logged in" || msg === "ma_nv mismatch") {
-    return;
-  }
-  alert("Lỗi tải bản đồ: " + (err.message || err));
+  const msg = document.getElementById("msg");
+  msg.className = "msg err";
+  msg.textContent = "Lỗi form: " + (err.message || err);
   console.error(err);
 });
 </script>
