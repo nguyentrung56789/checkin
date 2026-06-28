@@ -87,14 +87,57 @@
       width:100%;
     }
     #searchBox{ flex:1.2; }
-    #wardFilter{
+    .ward-multi{
       flex:1;
       min-width:0;
+      position:relative;
+    }
+    #wardToggle{
+      width:100%;
       padding:6px 8px;
       font-size:14px;
       border-radius:8px;
       border:1px solid #d1d5db;
       background:white;
+      color:#111827;
+      text-align:left;
+      cursor:pointer;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .ward-panel{
+      position:absolute;
+      top:calc(100% + 4px);
+      left:0;
+      right:0;
+      z-index:3000;
+      display:none;
+      max-height:min(320px,60vh);
+      overflow:auto;
+      padding:8px;
+      background:white;
+      border:1px solid #d1d5db;
+      border-radius:8px;
+      box-shadow:0 12px 30px rgba(0,0,0,0.22);
+    }
+    .ward-multi.open .ward-panel{ display:block; }
+    .ward-item{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding:7px 6px;
+      border-radius:6px;
+      font-size:14px;
+      color:#111827;
+      cursor:pointer;
+      user-select:none;
+    }
+    .ward-item:hover{ background:#f3f4f6; }
+    .ward-item input{
+      width:16px;
+      height:16px;
+      flex:0 0 16px;
     }
     @media (max-width:640px){
       .top-controls{
@@ -109,7 +152,7 @@
       }
       .row select,
       #searchBox,
-      #wardFilter{
+      #wardToggle{
         font-size:13px;
         padding:8px 7px;
       }
@@ -125,9 +168,12 @@
       #nvFilter{ flex:1 1 100%; }
       .search-row{ flex-direction:column; }
       #searchBox,
-      #wardFilter{
+      .ward-multi{
         width:100%;
         flex:none;
+      }
+      .ward-panel{
+        max-height:48vh;
       }
     }
   </style>
@@ -155,9 +201,16 @@
 
   <div class="search-row">
     <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
-    <select id="wardFilter">
-      <option value="">Phường - thành phố</option>
-    </select>
+    <div id="wardMulti" class="ward-multi">
+      <button id="wardToggle" type="button">Phường - thành phố</button>
+      <div id="wardPanel" class="ward-panel">
+        <label class="ward-item">
+          <input id="wardAll" type="checkbox" checked>
+          <span>Tất cả phường</span>
+        </label>
+        <div id="wardOptions"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -583,7 +636,11 @@
 
   const levelFilter = document.getElementById("levelFilter");
   const searchBox = document.getElementById("searchBox");
-  const wardFilter = document.getElementById("wardFilter");
+  const wardMulti = document.getElementById("wardMulti");
+  const wardToggle = document.getElementById("wardToggle");
+  const wardAll = document.getElementById("wardAll");
+  const wardOptions = document.getElementById("wardOptions");
+  const selectedWardKeys = new Set();
 
   const wardMap = new Map();
   points.forEach(p => {
@@ -594,16 +651,80 @@
   [...wardMap.entries()]
     .sort((a, b) => a[1].localeCompare(b[1], "vi"))
     .forEach(([key, label]) => {
-      const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = label;
-      wardFilter.appendChild(opt);
+      const item = document.createElement("label");
+      item.className = "ward-item";
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = key;
+      checkbox.dataset.label = label;
+      checkbox.className = "ward-check";
+
+      const text = document.createElement("span");
+      text.textContent = label;
+
+      item.appendChild(checkbox);
+      item.appendChild(text);
+      wardOptions.appendChild(item);
     });
+
+  function getSelectedWardLabels(){
+    return [...wardOptions.querySelectorAll(".ward-check:checked")]
+      .map(cb => cb.dataset.label || cb.value);
+  }
+
+  function updateWardToggleText(){
+    const labels = getSelectedWardLabels();
+    if (!labels.length) {
+      wardToggle.textContent = "Phường - thành phố";
+      return;
+    }
+    if (labels.length === 1) {
+      wardToggle.textContent = labels[0];
+      return;
+    }
+    wardToggle.textContent = `Đã chọn ${labels.length} phường`;
+  }
+
+  wardToggle.addEventListener("click", e => {
+    e.stopPropagation();
+    wardMulti.classList.toggle("open");
+  });
+
+  document.addEventListener("click", e => {
+    if (!wardMulti.contains(e.target)) wardMulti.classList.remove("open");
+  });
+
+  wardAll.addEventListener("change", () => {
+    if (wardAll.checked) {
+      selectedWardKeys.clear();
+      wardOptions.querySelectorAll(".ward-check").forEach(cb => { cb.checked = false; });
+      updateWardToggleText();
+      applyFilter();
+    } else if (!selectedWardKeys.size) {
+      wardAll.checked = true;
+    }
+  });
+
+  wardOptions.addEventListener("change", e => {
+    const cb = e.target.closest(".ward-check");
+    if (!cb) return;
+
+    if (cb.checked) {
+      selectedWardKeys.add(cb.value);
+      wardAll.checked = false;
+    } else {
+      selectedWardKeys.delete(cb.value);
+      if (!selectedWardKeys.size) wardAll.checked = true;
+    }
+
+    updateWardToggleText();
+    applyFilter();
+  });
 
   function applyFilter(){
     const fLevel = levelFilter.value;
     const fNV = nvFilter.value;
-    const fWard = wardFilter.value;
     const q = searchBox.value.trim().toLowerCase();
 
     points.forEach(p=>{
@@ -617,7 +738,7 @@
       if (fLevel === "buy" && !p.bought) ok = false;
       if (fLevel === "nobuy" && p.bought) ok = false;
       if (fNV && p.nvCode !== fNV) ok = false;
-      if (fWard && p.wardKey !== fWard) ok = false;
+      if (selectedWardKeys.size && !selectedWardKeys.has(p.wardKey)) ok = false;
 
       if(q){
         const text = `
@@ -653,7 +774,6 @@
 
   levelFilter.onchange = applyFilter;
   nvFilter.onchange = applyFilter;
-  wardFilter.onchange = applyFilter;
   searchBox.oninput = applyFilter;
 
 })().catch(err => {
