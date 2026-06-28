@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Form khách hàng check-in</title>
+
+  <script src="./js/internal_key.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      min-height:100vh;
+      background:#f3f4f6;
+      font-family:system-ui;
+      color:#111827;
+    }
+    .wrap{
+      width:min(720px,100%);
+      margin:0 auto;
+      padding:16px;
+    }
+    .head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
+    }
+    h1{
+      margin:0;
+      font-size:22px;
+      line-height:1.2;
+    }
+    .id-pill{
+      padding:6px 10px;
+      border-radius:999px;
+      background:#e5e7eb;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    form{
+      background:white;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      padding:14px;
+      box-shadow:0 8px 24px rgba(15,23,42,0.08);
+    }
+    label{
+      display:block;
+      margin-top:12px;
+      font-size:13px;
+      font-weight:700;
+      color:#374151;
+    }
+    input, textarea{
+      width:100%;
+      margin-top:6px;
+      padding:11px 12px;
+      border:1px solid #d1d5db;
+      border-radius:8px;
+      font:inherit;
+      background:white;
+    }
+    textarea{
+      min-height:80px;
+      resize:vertical;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .actions{
+      display:flex;
+      gap:10px;
+      margin-top:16px;
+    }
+    button, a.btn{
+      flex:1;
+      border:0;
+      border-radius:8px;
+      padding:12px;
+      font-weight:800;
+      text-align:center;
+      text-decoration:none;
+      cursor:pointer;
+      font:inherit;
+    }
+    button{
+      background:#16a34a;
+      color:white;
+    }
+    a.btn{
+      background:#2563eb;
+      color:white;
+    }
+    .msg{
+      margin-top:12px;
+      padding:10px 12px;
+      border-radius:8px;
+      display:none;
+      font-weight:700;
+    }
+    .msg.ok{
+      display:block;
+      background:#dcfce7;
+      color:#166534;
+    }
+    .msg.err{
+      display:block;
+      background:#fee2e2;
+      color:#991b1b;
+    }
+    @media (max-width:560px){
+      .grid{ grid-template-columns:1fr; }
+      .head{ align-items:flex-start; flex-direction:column; }
+      .actions{ flex-direction:column; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="head">
+      <h1>Form khách hàng check-in</h1>
+      <div class="id-pill">ID: <span id="showId"></span></div>
+    </div>
+
+    <form id="form">
+      <label>Mã KH</label>
+      <input id="ma_kh" name="ma_kh" autocomplete="off">
+
+      <label>Tên KH</label>
+      <input id="ten_kh" name="ten_kh" autocomplete="off">
+
+      <label>Địa chỉ</label>
+      <textarea id="dia_chi" name="dia_chi"></textarea>
+
+      <label>Điện thoại</label>
+      <input id="dien_thoai" name="dien_thoai" inputmode="tel" autocomplete="off">
+
+      <label>Mã NV</label>
+      <input id="ma_nv" name="ma_nv" autocomplete="off">
+
+      <div class="grid">
+        <div>
+          <label>Kinh độ lng</label>
+          <input id="lng" name="lng" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label>Vĩ độ lat</label>
+          <input id="lat" name="lat" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit">Lưu cập nhật</button>
+        <a id="mapLink" class="btn" href="#" target="_blank" rel="noopener">Chỉ đường</a>
+      </div>
+
+      <div id="msg" class="msg"></div>
+    </form>
+  </div>
+
+<script>
+(async function(){
+  const params = new URLSearchParams(location.search);
+  const id = params.get("id");
+  const msg = document.getElementById("msg");
+  const showId = document.getElementById("showId");
+
+  function show(type, text){
+    msg.className = "msg " + type;
+    msg.textContent = text;
+  }
+
+  if (!id) {
+    showId.textContent = "thiếu";
+    show("err", "Thiếu id trên URL. Ví dụ: checkin_khach_hang_form.html?id=1");
+    return;
+  }
+
+  showId.textContent = id;
+
+  const supabase = window.supabase.createClient(
+    window.getConfig("url"),
+    window.getConfig("role") || window.getConfig("anon"),
+    {
+      global:{ headers:{ "x-internal-key": window.getInternalKey() } }
+    }
+  );
+
+  const fields = ["ma_kh", "ten_kh", "dia_chi", "dien_thoai", "ma_nv", "lng", "lat"];
+
+  function setMapLink(){
+    const lat = document.getElementById("lat").value.trim();
+    const lng = document.getElementById("lng").value.trim();
+    const a = document.getElementById("mapLink");
+
+    if (lat && lng) {
+      a.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`;
+    } else {
+      a.href = "#";
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("nv_checkin_khach_hang")
+    .select("id,ma_kh,ten_kh,dia_chi,dien_thoai,ma_nv,lng,lat")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    show("err", "Lỗi tải dữ liệu: " + error.message);
+    return;
+  }
+
+  if (!data) {
+    show("err", "Không tìm thấy khách hàng có id = " + id);
+    return;
+  }
+
+  fields.forEach(name => {
+    document.getElementById(name).value = data[name] ?? "";
+  });
+  setMapLink();
+
+  document.getElementById("lat").addEventListener("input", setMapLink);
+  document.getElementById("lng").addEventListener("input", setMapLink);
+
+  document.getElementById("form").addEventListener("submit", async e => {
+    e.preventDefault();
+
+    const payload = {};
+    fields.forEach(name => {
+      const value = document.getElementById(name).value.trim();
+      payload[name] = value === "" ? null : value;
+    });
+
+    const { error: updateError } = await supabase
+      .from("nv_checkin_khach_hang")
+      .update(payload)
+      .eq("id", id);
+
+    if (updateError) {
+      show("err", "Lỗi lưu: " + updateError.message);
+      return;
+    }
+
+    show("ok", "Đã lưu cập nhật");
+    setMapLink();
+  });
+})().catch(err => {
+  const msg = document.getElementById("msg");
+  msg.className = "msg err";
+  msg.textContent = "Lỗi: " + (err.message || err);
+  console.error(err);
+});
+</script>
+</body>
+</html>
