@@ -42,6 +42,7 @@
     }
     .row select, #searchBox{
       flex:1;
+      min-width:0;
       padding:6px 8px;
       font-size:14px;
       border-radius:8px;
@@ -80,6 +81,55 @@
     .mk-red{ background:#ef4444; }
     .mk-orange{ background:#f59e0b; }
     .mk-purple{ background:#8b5cf6; }
+    .search-row{
+      display:flex;
+      gap:8px;
+      width:100%;
+    }
+    #searchBox{ flex:1.2; }
+    #wardFilter{
+      flex:1;
+      min-width:0;
+      padding:6px 8px;
+      font-size:14px;
+      border-radius:8px;
+      border:1px solid #d1d5db;
+      background:white;
+    }
+    @media (max-width:640px){
+      .top-controls{
+        top:8px;
+        left:8px;
+        right:8px;
+        gap:6px;
+      }
+      .row,
+      .search-row{
+        gap:6px;
+      }
+      .row select,
+      #searchBox,
+      #wardFilter{
+        font-size:13px;
+        padding:8px 7px;
+      }
+      #gpsBtn{
+        width:38px;
+        height:38px;
+        flex-basis:38px;
+      }
+    }
+    @media (max-width:430px){
+      .row{ flex-wrap:wrap; }
+      #levelFilter{ flex:1 1 calc(100% - 46px); }
+      #nvFilter{ flex:1 1 100%; }
+      .search-row{ flex-direction:column; }
+      #searchBox,
+      #wardFilter{
+        width:100%;
+        flex:none;
+      }
+    }
   </style>
 </head>
 
@@ -103,7 +153,12 @@
     </select>
   </div>
 
-  <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
+  <div class="search-row">
+    <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
+    <select id="wardFilter">
+      <option value="">Phường - thành phố</option>
+    </select>
+  </div>
 </div>
 
 <div id="map"></div>
@@ -184,6 +239,25 @@
     return String(v || "").replace(/\D/g, "").trim();
   }
 
+  function normalizeText(v){
+    return String(v || "")
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/\s+/g, " ");
+  }
+
+  function getWardCityLabel(row){
+    const ward = String(row.phuong_xa || "").trim();
+    const city = String(row.thanh_pho || "").trim();
+    if (ward && city) return `${ward} - ${city}`;
+    if (ward) return ward;
+    if (city) return city;
+    return "";
+  }
+
   function isBought(v){
     if (v === true) return true;
     if (v === false) return false;
@@ -227,7 +301,7 @@
     while (true) {
       const { data, error } = await supabase
         .from("nv_checkin_khach_hang")
-        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang,con_hoat_dong")
+        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,phuong_xa,thanh_pho,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang,con_hoat_dong")
         .eq("con_hoat_dong", true)
         .range(from, from + pageSize - 1);
 
@@ -304,12 +378,14 @@
     const rowId = String(r.id || "").trim();
     const khKey = String(r.ma_kh || "").trim();
     const tongCheckinKH = tongCheckinTheoKH.get(khKey) || 0;
+    const wardCityLabel = getWardCityLabel(r);
 
     const mk = L.marker([lat,lng],{icon}).bindPopup(`
       <b>${esc(r.ten_kh || "Không tên")}</b><br>
       ID: ${esc(r.id || "")}<br>
       Mã KH: ${esc(r.ma_kh || "")}<br>
       Địa chỉ: ${esc(r.dia_chi || "")}<br>
+      Phường/TP: ${esc(wardCityLabel)}<br>
       ĐT: ${esc(r.dien_thoai || "")}<br>
       NV: ${esc(r.ten_nv || r.ma_nv || "")}<br>
       Tổng check-in KH: <b>${esc(tongCheckinKH)}</b><br>
@@ -357,6 +433,8 @@
       nvCode: String(r.ma_nv || "").trim(),
       nvName: String(r.ten_nv || "").trim(),
       nvPhone: String(r.dien_thoai || "").trim(),
+      wardKey: normalizeText(wardCityLabel),
+      wardLabel: wardCityLabel,
       row: r
     };
 
@@ -394,10 +472,12 @@
   }
 
   function openCustomerForm(url){
-    const w = Math.min(430, Math.max(320, window.screen.width - 24));
-    const h = Math.min(760, Math.max(520, window.screen.height - 80));
-    const left = Math.max(0, Math.round((window.screen.width - w) / 2));
-    const top = Math.max(0, Math.round((window.screen.height - h) / 2));
+    const sw = window.screen.availWidth || window.screen.width || window.innerWidth || 430;
+    const sh = window.screen.availHeight || window.screen.height || window.innerHeight || 760;
+    const w = Math.min(520, Math.max(320, sw - 24));
+    const h = Math.min(820, Math.max(520, sh - 48));
+    const left = Math.max(0, Math.round((sw - w) / 2));
+    const top = Math.max(0, Math.round((sh - h) / 2));
 
     window.open(
       url,
@@ -503,10 +583,27 @@
 
   const levelFilter = document.getElementById("levelFilter");
   const searchBox = document.getElementById("searchBox");
+  const wardFilter = document.getElementById("wardFilter");
+
+  const wardMap = new Map();
+  points.forEach(p => {
+    if (!p.wardKey || !p.wardLabel) return;
+    if (!wardMap.has(p.wardKey)) wardMap.set(p.wardKey, p.wardLabel);
+  });
+
+  [...wardMap.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1], "vi"))
+    .forEach(([key, label]) => {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = label;
+      wardFilter.appendChild(opt);
+    });
 
   function applyFilter(){
     const fLevel = levelFilter.value;
     const fNV = nvFilter.value;
+    const fWard = wardFilter.value;
     const q = searchBox.value.trim().toLowerCase();
 
     points.forEach(p=>{
@@ -520,6 +617,7 @@
       if (fLevel === "buy" && !p.bought) ok = false;
       if (fLevel === "nobuy" && p.bought) ok = false;
       if (fNV && p.nvCode !== fNV) ok = false;
+      if (fWard && p.wardKey !== fWard) ok = false;
 
       if(q){
         const text = `
@@ -527,6 +625,8 @@
           ${r.ma_kh || ""}
           ${r.ten_kh || ""}
           ${r.dia_chi || ""}
+          ${r.phuong_xa || ""}
+          ${r.thanh_pho || ""}
           ${r.dien_thoai || ""}
           ${r.ghi_chu || ""}
           ${r.ma_nv || ""}
@@ -553,6 +653,7 @@
 
   levelFilter.onchange = applyFilter;
   nvFilter.onchange = applyFilter;
+  wardFilter.onchange = applyFilter;
   searchBox.oninput = applyFilter;
 
 })().catch(err => {
