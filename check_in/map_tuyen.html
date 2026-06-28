@@ -16,7 +16,7 @@
       margin:0; padding:0;
       height:100%;
       overflow:hidden;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      font-family:system-ui;
     }
     #map{
       position:fixed;
@@ -34,49 +34,33 @@
       display:flex;
       flex-direction:column;
       gap:8px;
-      pointer-events:none;
     }
     .row{
       display:flex;
       gap:8px;
       width:100%;
-      pointer-events:auto;
     }
     .row select, #searchBox{
       flex:1;
-      min-width:0;
       padding:6px 8px;
       font-size:14px;
       border-radius:8px;
       border:1px solid #d1d5db;
       background:white;
     }
-    #gpsBtn,#geoToggle{
-      height:40px;
-      border:none;
-      background:white;
-      box-shadow:0 4px 10px rgba(0,0,0,0.25);
-      cursor:pointer;
-    }
     #gpsBtn{
       width:40px;
+      height:40px;
       border-radius:50%;
+      border:none;
+      background:white;
       display:flex;
       align-items:center;
       justify-content:center;
+      box-shadow:0 4px 10px rgba(0,0,0,0.3);
       font-size:20px;
+      cursor:pointer;
       flex:0 0 40px;
-    }
-    #geoToggle{
-      border-radius:8px;
-      padding:0 10px;
-      font-size:13px;
-      font-weight:700;
-      color:#111827;
-      white-space:nowrap;
-    }
-    #geoToggle.is-off{
-      opacity:0.65;
     }
     .mk-red,
     .mk-orange,
@@ -96,45 +80,6 @@
     .mk-red{ background:#ef4444; }
     .mk-orange{ background:#f59e0b; }
     .mk-purple{ background:#8b5cf6; }
-    .ward-label{
-      color:#111827;
-      font-weight:800;
-      font-size:11px;
-      text-shadow:0 1px 2px white,0 -1px 2px white,1px 0 2px white,-1px 0 2px white;
-      pointer-events:none;
-    }
-    .ward-legend{
-      position:fixed;
-      left:10px;
-      bottom:18px;
-      z-index:2000;
-      background:white;
-      color:#111827;
-      border-radius:8px;
-      box-shadow:0 8px 18px rgba(0,0,0,0.22);
-      padding:8px 10px;
-      font-size:12px;
-      line-height:1.5;
-      max-width:210px;
-    }
-    .ward-legend.is-hidden{ display:none; }
-    .ward-legend b{ display:block; margin-bottom:3px; }
-    .lg-row{ display:flex; align-items:center; gap:6px; }
-    .lg-color{ width:18px; height:10px; border-radius:3px; border:1px solid rgba(0,0,0,0.2); }
-    .geo-status{
-      position:fixed;
-      left:10px;
-      bottom:18px;
-      z-index:2001;
-      background:rgba(255,255,255,0.95);
-      color:#111827;
-      border-radius:8px;
-      box-shadow:0 8px 18px rgba(0,0,0,0.18);
-      padding:7px 9px;
-      font-size:12px;
-      max-width:280px;
-    }
-    .geo-status.is-hidden{ display:none; }
   </style>
 </head>
 
@@ -158,40 +103,13 @@
     </select>
   </div>
 
-  <div class="row">
-    <button id="geoToggle" type="button">Phường mới</button>
-    <select id="wardFilter">
-      <option value="">Tất cả phường</option>
-    </select>
-  </div>
-
   <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
 </div>
 
 <div id="map"></div>
 
-<div id="wardLegend" class="ward-legend is-hidden">
-  <b>Màu theo số khách</b>
-  <div class="lg-row"><span class="lg-color" style="background:#dbeafe"></span>0 khách</div>
-  <div class="lg-row"><span class="lg-color" style="background:#93c5fd"></span>1 - 5 khách</div>
-  <div class="lg-row"><span class="lg-color" style="background:#3b82f6"></span>6 - 15 khách</div>
-  <div class="lg-row"><span class="lg-color" style="background:#1d4ed8"></span>Trên 15 khách</div>
-</div>
-
-<div id="geoStatus" class="geo-status is-hidden"></div>
-
 <script>
 (async function(){
-
-  const GEOJSON_URL = "./geo/haiphong_phuong_moi.geojson";
-  const GEOJSON_FALLBACK_URLS = [
-    "https://huggingface.co/datasets/myleo198/sapnhap-bando-vn/resolve/main/geo/communes.geojson",
-    "https://huggingface.co/datasets/tmquan/sapnhap-bando-vn/resolve/main/geo/communes.geojson"
-  ];
-  const HAI_PHONG_BOUNDS = L.latLngBounds(
-    [20.42, 106.23],
-    [21.18, 107.17]
-  );
 
   const params = new URLSearchParams(location.search);
   const currentMaNV = String(params.get("ma_nv") || "").trim();
@@ -241,9 +159,6 @@
   );
 
   const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
-  map.createPane("wardPane");
-  map.getPane("wardPane").style.zIndex = 350;
-  map.getPane("wardPane").style.pointerEvents = "auto";
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
     maxZoom:19
@@ -267,19 +182,6 @@
 
   function normalizePhone(v){
     return String(v || "").replace(/\D/g, "").trim();
-  }
-
-  function normalizeName(v){
-    return String(v || "")
-      .trim()
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/đ/g, "d")
-      .replace(/\b(phuong|xa|thi tran|dac khu|quan|huyen|thanh pho|tp)\b/g, "")
-      .replace(/[^a-z0-9]+/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
   }
 
   function isBought(v){
@@ -317,191 +219,6 @@
     return index + 1;
   }
 
-  function getWardNameFromFeature(feature){
-    const p = feature && feature.properties ? feature.properties : {};
-    return (
-      p.ten ||
-      p.Ten ||
-      p.TEN_XA ||
-      p.TEN_DVHC ||
-      p.ten_don_vi ||
-      p.tendonvi ||
-      p.name ||
-      p.ten_xa ||
-      p.tenxa ||
-      p.ten_dvhc ||
-      p.ten_short ||
-      p.TEN ||
-      p.NAME ||
-      p.NAME_3 ||
-      p.VARNAME_3 ||
-      ""
-    );
-  }
-
-  function isHaiPhongFeature(feature){
-    const p = feature && feature.properties ? feature.properties : {};
-    const codeText = [
-      p.parent_ma,
-      p.ma_tinh,
-      p.matinh,
-      p.province_code,
-      p.MA_TINH
-    ].map(v => String(v || "").trim()).join(" ");
-
-    const text = [
-      p.parent_ten,
-      p.parent_ten_xa,
-      p.parent_name,
-      p.tinh,
-      p.tentinh,
-      p.ten_tinh,
-      p.province,
-      p.TINH,
-      p.TEN_TINH,
-      p.address,
-      p.embed_text
-    ].map(v => normalizeName(v)).join(" ");
-
-    return text.includes("hai phong") || /\b31\b/.test(codeText);
-  }
-
-  function featureIntersectsHaiPhongBounds(feature){
-    try {
-      const layer = L.geoJSON(feature);
-      return HAI_PHONG_BOUNDS.intersects(layer.getBounds());
-    } catch {
-      return false;
-    }
-  }
-
-  function filterHaiPhongGeoJson(geo){
-    if (!geo || !Array.isArray(geo.features)) return geo;
-
-    const hpFeatures = geo.features.filter(isHaiPhongFeature);
-    if (hpFeatures.length) {
-      return {
-        type:"FeatureCollection",
-        features:hpFeatures
-      };
-    }
-
-    const byBounds = geo.features.filter(featureIntersectsHaiPhongBounds);
-    if (byBounds.length) {
-      return {
-        type:"FeatureCollection",
-        features:byBounds
-      };
-    }
-
-    return geo;
-  }
-
-  function setGeoStatus(text){
-    const el = document.getElementById("geoStatus");
-    if (!el) return;
-    if (!text) {
-      el.classList.add("is-hidden");
-      el.textContent = "";
-      return;
-    }
-    el.textContent = text;
-    el.classList.remove("is-hidden");
-  }
-
-  function describeFeatureFields(geo){
-    const p = geo?.features?.[0]?.properties || {};
-    return Object.keys(p).slice(0, 12).join(", ");
-  }
-
-  function getWardKeyFromRow(row){
-    return normalizeName(
-      row.phuong_moi ||
-      row.phuong_xa_moi ||
-      row.phuong_xa ||
-      row.wardName ||
-      row.ward_name ||
-      ""
-    );
-  }
-
-  function wardFillColor(count){
-    if (count > 15) return "#1d4ed8";
-    if (count > 5) return "#3b82f6";
-    if (count > 0) return "#93c5fd";
-    return "#dbeafe";
-  }
-
-  function wardStyle(feature){
-    const count = toNumber(feature.properties.__count, 0);
-    return {
-      color:"#1e40af",
-      weight:1,
-      opacity:0.85,
-      fillColor:wardFillColor(count),
-      fillOpacity:0.28
-    };
-  }
-
-  function webMercatorToLngLat(x, y){
-    const lon = x * 180 / 20037508.34;
-    const lat = 180 / Math.PI * (2 * Math.atan(Math.exp(y * Math.PI / 20037508.34)) - Math.PI / 2);
-    return [lon, lat];
-  }
-
-  function convertCoordsIfNeeded(coords){
-    if (!Array.isArray(coords)) return coords;
-    if (typeof coords[0] === "number" && typeof coords[1] === "number") {
-      const x = coords[0];
-      const y = coords[1];
-      if (Math.abs(x) > 180 || Math.abs(y) > 90) return webMercatorToLngLat(x, y);
-      return coords;
-    }
-    return coords.map(convertCoordsIfNeeded);
-  }
-
-  function normalizeGeoJsonProjection(geo){
-    if (!geo || !Array.isArray(geo.features)) return geo;
-    geo.features.forEach(f => {
-      if (f.geometry && f.geometry.coordinates) {
-        f.geometry.coordinates = convertCoordsIfNeeded(f.geometry.coordinates);
-      }
-    });
-    return geo;
-  }
-
-  function pointInRing(lng, lat, ring){
-    let inside = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i][0], yi = ring[i][1];
-      const xj = ring[j][0], yj = ring[j][1];
-      const intersect = ((yi > lat) !== (yj > lat)) &&
-        (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  }
-
-  function pointInPolygon(lng, lat, polygon){
-    if (!Array.isArray(polygon) || !polygon.length) return false;
-    if (!pointInRing(lng, lat, polygon[0])) return false;
-    for (let i = 1; i < polygon.length; i++) {
-      if (pointInRing(lng, lat, polygon[i])) return false;
-    }
-    return true;
-  }
-
-  function pointInGeometry(lng, lat, geometry){
-    if (!geometry) return false;
-    if (geometry.type === "Polygon") {
-      return pointInPolygon(lng, lat, geometry.coordinates);
-    }
-    if (geometry.type === "MultiPolygon") {
-      return geometry.coordinates.some(poly => pointInPolygon(lng, lat, poly));
-    }
-    return false;
-  }
-
   async function fetchAllRows() {
     const pageSize = 1000;
     let from = 0;
@@ -510,7 +227,7 @@
     while (true) {
       const { data, error } = await supabase
         .from("nv_checkin_khach_hang")
-        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,phuong_xa,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang,con_hoat_dong")
+        .select("id,lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang,con_hoat_dong")
         .eq("con_hoat_dong", true)
         .range(from, from + pageSize - 1);
 
@@ -547,39 +264,6 @@
     }
 
     return allRows;
-  }
-
-  async function fetchGeoJsonFromUrl(url){
-    setGeoStatus("Đang tải ranh giới phường...");
-    const res = await fetch(url, { cache:"no-store" });
-    if (!res.ok) throw new Error(`Không tải được ${url}: ${res.status}`);
-
-    const geo = await res.json();
-    if (!geo || geo.type !== "FeatureCollection" || !Array.isArray(geo.features)) {
-      throw new Error(`GeoJSON sai định dạng FeatureCollection: ${url}`);
-    }
-
-    return normalizeGeoJsonProjection(filterHaiPhongGeoJson(geo));
-  }
-
-  async function loadHaiPhongGeoJson(){
-    const urls = [GEOJSON_URL, ...GEOJSON_FALLBACK_URLS];
-
-    for (const url of urls) {
-      try {
-        const geo = await fetchGeoJsonFromUrl(url);
-        if (geo && Array.isArray(geo.features) && geo.features.length) {
-          console.log("Đã tải GeoJSON:", url, geo.features.length, "phường/xã");
-          setGeoStatus(`Đã tải ${geo.features.length} vùng phường/xã.`);
-          return geo;
-        }
-      } catch (err) {
-        console.warn("Không tải được GeoJSON:", url, err);
-      }
-    }
-
-    setGeoStatus("Không tải được GeoJSON phường mới.");
-    return null;
   }
 
   const data = await fetchAllRows();
@@ -626,7 +310,6 @@
       ID: ${esc(r.id || "")}<br>
       Mã KH: ${esc(r.ma_kh || "")}<br>
       Địa chỉ: ${esc(r.dia_chi || "")}<br>
-      Phường/Xã: ${esc(r.phuong_moi || r.phuong_xa_moi || r.phuong_xa || "")}<br>
       ĐT: ${esc(r.dien_thoai || "")}<br>
       NV: ${esc(r.ten_nv || r.ma_nv || "")}<br>
       Tổng check-in KH: <b>${esc(tongCheckinKH)}</b><br>
@@ -671,8 +354,6 @@
       color,
       level,
       bought,
-      wardKey: getWardKeyFromRow(r),
-      wardName: String(r.phuong_moi || r.phuong_xa_moi || r.phuong_xa || "").trim(),
       nvCode: String(r.ma_nv || "").trim(),
       nvName: String(r.ten_nv || "").trim(),
       nvPhone: String(r.dien_thoai || "").trim(),
@@ -684,148 +365,6 @@
 
     markers.push(mk);
   });
-
-  let wardLayer = null;
-  let wardVisible = true;
-  const wardFilter = document.getElementById("wardFilter");
-  const wardLegend = document.getElementById("wardLegend");
-  const geoToggle = document.getElementById("geoToggle");
-
-  function prepareWardCounts(geo){
-    const namedCount = new Map();
-    points.forEach(p => {
-      if (!p.wardKey) return;
-      namedCount.set(p.wardKey, (namedCount.get(p.wardKey) || 0) + 1);
-    });
-
-    geo.features.forEach(feature => {
-      const wardName = getWardNameFromFeature(feature);
-      const wardKey = normalizeName(wardName);
-      let count = namedCount.get(wardKey) || 0;
-
-      if (!count) {
-        count = points.filter(p => pointInGeometry(p.lng, p.lat, feature.geometry)).length;
-      }
-
-      feature.properties.__wardName = wardName;
-      feature.properties.__wardKey = wardKey;
-      feature.properties.__count = count;
-    });
-  }
-
-  function buildWardFilter(geo){
-    const rows = geo.features
-      .map(f => ({
-        key: f.properties.__wardKey,
-        name: f.properties.__wardName,
-        count: toNumber(f.properties.__count, 0)
-      }))
-      .filter(x => x.key && x.name)
-      .sort((a, b) => a.name.localeCompare(b.name, "vi"));
-
-    wardFilter.innerHTML = `<option value="">Tất cả phường</option>`;
-
-    rows.forEach(x => {
-      const opt = document.createElement("option");
-      opt.value = x.key;
-      opt.textContent = `${x.name} (${x.count})`;
-      wardFilter.appendChild(opt);
-    });
-
-    if (!rows.length) {
-      setGeoStatus(`Đã tải GeoJSON nhưng chưa nhận được tên phường. Các cột có trong file: ${describeFeatureFields(geo)}`);
-    }
-  }
-
-  function createWardLayer(geo){
-    prepareWardCounts(geo);
-    buildWardFilter(geo);
-
-    wardLayer = L.geoJSON(geo, {
-      pane:"wardPane",
-      style: wardStyle,
-      onEachFeature: (feature, layer) => {
-        const name = feature.properties.__wardName || "Không rõ tên";
-        const count = toNumber(feature.properties.__count, 0);
-        const predecessors = feature.properties.predecessors || feature.properties.truocsapnhap || "";
-
-        layer.bindPopup(`
-          <b>${esc(name)}</b><br>
-          Số khách trên bản đồ: <b>${esc(count)}</b>
-          ${predecessors ? `<br>Trước sáp nhập: ${esc(predecessors)}` : ""}
-        `);
-
-        layer.on("mouseover", () => layer.setStyle({ weight:2, fillOpacity:0.42 }));
-        layer.on("mouseout", () => layer.setStyle(wardStyle(feature)));
-        layer.on("click", () => {
-          wardFilter.value = feature.properties.__wardKey || "";
-          applyFilter();
-        });
-      }
-    }).addTo(map);
-
-    wardLayer.eachLayer(layer => {
-      const center = layer.getBounds && layer.getBounds().isValid() ? layer.getBounds().getCenter() : null;
-      const name = layer.feature?.properties?.__wardName || "";
-      if (!center || !name) return;
-      const label = L.marker(center, {
-        icon: L.divIcon({
-          html:`<div class="ward-label">${esc(name)}</div>`,
-          className:"",
-          iconSize:[120,18],
-          iconAnchor:[60,9]
-        }),
-        interactive:false
-      });
-      layer.feature.properties.__labelMarker = label;
-      if (map.getZoom() >= 13) label.addTo(map);
-    });
-
-    wardLayer.bringToBack();
-    wardLegend.classList.remove("is-hidden");
-    if (wardFilter.options.length > 1) {
-      setGeoStatus("");
-    }
-  }
-
-  function updateWardLabels(){
-    if (!wardLayer) return;
-    const show = wardVisible && map.getZoom() >= 13;
-    wardLayer.eachLayer(layer => {
-      const label = layer.feature?.properties?.__labelMarker;
-      if (!label) return;
-      if (show) {
-        if (!map.hasLayer(label)) label.addTo(map);
-      } else {
-        if (map.hasLayer(label)) map.removeLayer(label);
-      }
-    });
-  }
-
-  function setWardVisible(visible){
-    wardVisible = visible;
-    geoToggle.classList.toggle("is-off", !visible);
-    geoToggle.textContent = visible ? "Phường mới" : "Ẩn phường";
-    wardLegend.classList.toggle("is-hidden", !visible || !wardLayer);
-
-    if (!wardLayer) return;
-    if (visible) {
-      if (!map.hasLayer(wardLayer)) wardLayer.addTo(map);
-      wardLayer.bringToBack();
-    } else {
-      if (map.hasLayer(wardLayer)) map.removeLayer(wardLayer);
-    }
-    updateWardLabels();
-  }
-
-  const geo = await loadHaiPhongGeoJson();
-  if (geo) {
-    createWardLayer(geo);
-  } else {
-    geoToggle.textContent = "Thiếu GeoJSON";
-    geoToggle.classList.add("is-off");
-    wardFilter.disabled = true;
-  }
 
   async function stopActiveById(id){
     const stopId = String(id || "").trim();
@@ -885,8 +424,6 @@
   if(markers.length){
     const grp = L.featureGroup(markers);
     map.fitBounds(grp.getBounds(),{padding:[50,50]});
-  } else if (wardLayer) {
-    map.fitBounds(wardLayer.getBounds(), { padding:[30,30] });
   }
 
   let userMarker = null;
@@ -944,13 +481,6 @@
     }
   };
 
-  geoToggle.onclick = () => {
-    if (!wardLayer) return;
-    setWardVisible(!wardVisible);
-  };
-
-  map.on("zoomend", updateWardLabels);
-
   const nvFilter = document.getElementById("nvFilter");
   const nvMap = new Map();
 
@@ -974,40 +504,9 @@
   const levelFilter = document.getElementById("levelFilter");
   const searchBox = document.getElementById("searchBox");
 
-  function selectedWardContainsPoint(point, wardKey){
-    if (!wardKey) return true;
-    if (point.wardKey && point.wardKey === wardKey) return true;
-    if (!wardLayer) return false;
-
-    let found = false;
-    wardLayer.eachLayer(layer => {
-      if (found) return;
-      const f = layer.feature;
-      if (!f || f.properties.__wardKey !== wardKey) return;
-      found = pointInGeometry(point.lng, point.lat, f.geometry);
-    });
-    return found;
-  }
-
-  function updateWardLayerFilter(){
-    if (!wardLayer) return;
-    const selectedWard = wardFilter.value;
-
-    wardLayer.eachLayer(layer => {
-      const key = layer.feature?.properties?.__wardKey || "";
-      const show = !selectedWard || key === selectedWard;
-      layer.setStyle({
-        ...wardStyle(layer.feature),
-        fillOpacity: show ? 0.32 : 0.06,
-        opacity: show ? 0.9 : 0.25
-      });
-    });
-  }
-
   function applyFilter(){
     const fLevel = levelFilter.value;
     const fNV = nvFilter.value;
-    const fWard = wardFilter.value;
     const q = searchBox.value.trim().toLowerCase();
 
     points.forEach(p=>{
@@ -1021,7 +520,6 @@
       if (fLevel === "buy" && !p.bought) ok = false;
       if (fLevel === "nobuy" && p.bought) ok = false;
       if (fNV && p.nvCode !== fNV) ok = false;
-      if (fWard && !selectedWardContainsPoint(p, fWard)) ok = false;
 
       if(q){
         const text = `
@@ -1029,9 +527,6 @@
           ${r.ma_kh || ""}
           ${r.ten_kh || ""}
           ${r.dia_chi || ""}
-          ${r.phuong_moi || ""}
-          ${r.phuong_xa_moi || ""}
-          ${r.phuong_xa || ""}
           ${r.dien_thoai || ""}
           ${r.ghi_chu || ""}
           ${r.ma_nv || ""}
@@ -1050,8 +545,6 @@
       }
     });
 
-    updateWardLayerFilter();
-
     const remain = points.filter(p => map.hasLayer(p.marker));
     if(remain.length === 1){
       map.setView([remain[0].lat, remain[0].lng], 18);
@@ -1060,10 +553,7 @@
 
   levelFilter.onchange = applyFilter;
   nvFilter.onchange = applyFilter;
-  wardFilter.onchange = applyFilter;
   searchBox.oninput = applyFilter;
-
-  updateWardLabels();
 
 })().catch(err => {
   const msg = err && err.message ? err.message : "";
