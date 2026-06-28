@@ -315,13 +315,24 @@ async function getSupabaseLib(){
       $('#f_ma_kh').value      = row.ma_kh || '';
       $('#f_ten_kh').value     = row.ten_kh || '';
       $('#f_dia_chi').value    = row.dia_chi || '';
+      $('#f_phuong_xa').value  = row.phuong_xa || '';
+      $('#f_quan_huyen').value = row.quan_huyen || '';
+      $('#f_thanh_pho').value  = row.thanh_pho || '';
       $('#f_dien_thoai').value = row.dien_thoai || '';
       CURRENT.ma_kh = row.ma_kh;
     }else{
       $('#f_ma_kh').value      = '';
       $('#f_ten_kh').value     = '';
       $('#f_dia_chi').value    = '';
+      $('#f_phuong_xa').value  = '';
+      $('#f_quan_huyen').value = '';
+      $('#f_thanh_pho').value  = '';
       $('#f_dien_thoai').value = '';
+    }
+
+    const hint = $('#modalHint');
+    if (hint){
+      hint.textContent = getLatLngFromURL() ? 'Dùng tọa độ đã có từ ảnh chụp' : '';
     }
 
     $('#modalWrap').style.display = 'flex';
@@ -341,7 +352,7 @@ async function getSupabaseLib(){
 
     const { data, error } = await SB
       .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,dien_thoai,ngay_cuoi_cung_checkin',{count:'exact'})
+      .select('ma_kh,ten_kh,dia_chi,phuong_xa,quan_huyen,thanh_pho,dien_thoai,ngay_cuoi_cung_checkin',{count:'exact'})
       .order('ten_kh',{ascending:true})
       .limit(500);
 
@@ -389,6 +400,9 @@ async function getSupabaseLib(){
       <tr data-id="${escAttr(r.ma_kh)}"
           data-ten_kh="${escAttr(r.ten_kh||'')}"
           data-dia_chi="${escAttr(r.dia_chi||'')}"
+          data-phuong_xa="${escAttr(r.phuong_xa||'')}"
+          data-quan_huyen="${escAttr(r.quan_huyen||'')}"
+          data-thanh_pho="${escAttr(r.thanh_pho||'')}"
           data-dien_thoai="${escAttr(r.dien_thoai||'')}"
           data-ngay_cuoi_cung_checkin="${escAttr(r.ngay_cuoi_cung_checkin||'')}">
 
@@ -427,6 +441,9 @@ async function getSupabaseLib(){
       ma_kh:      tr.getAttribute('data-id'),
       ten_kh:     tr.dataset.ten_kh || tr.children[1].textContent,
       dia_chi:    tr.dataset.dia_chi || '',
+      phuong_xa:  tr.dataset.phuong_xa || '',
+      quan_huyen: tr.dataset.quan_huyen || '',
+      thanh_pho:  tr.dataset.thanh_pho || '',
       dien_thoai: tr.dataset.dien_thoai || tr.children[2].textContent
     };
     openModal('edit', row);
@@ -585,6 +602,9 @@ async function onMaKHClick(ma_kh){
     let ma_kh      = $('#f_ma_kh').value.trim();
     const ten_kh     = $('#f_ten_kh').value.trim();
     const dia_chi    = $('#f_dia_chi').value.trim();
+    const phuong_xa  = $('#f_phuong_xa').value.trim();
+    const quan_huyen = $('#f_quan_huyen').value.trim();
+    const thanh_pho  = $('#f_thanh_pho').value.trim();
     const dien_thoai = $('#f_dien_thoai').value.trim();
 
     if (CURRENT?.mode === 'add'){
@@ -613,7 +633,7 @@ async function onMaKHClick(ma_kh){
     if (CURRENT?.mode === 'add'){
       const { error } = await SB
         .from(TABLE)
-        .insert([{ ma_kh, ten_kh, dia_chi, dien_thoai, lat, lng }]);
+        .insert([{ ma_kh, ten_kh, dia_chi, phuong_xa, quan_huyen, thanh_pho, dien_thoai, lat, lng }]);
 
       if (error){
         console.error(error);
@@ -624,7 +644,7 @@ async function onMaKHClick(ma_kh){
     } else {
       const { error } = await SB
         .from(TABLE)
-        .update({ ten_kh, dia_chi, dien_thoai, lat, lng })
+        .update({ ten_kh, dia_chi, phuong_xa, quan_huyen, thanh_pho, dien_thoai })
         .eq('ma_kh', CURRENT.ma_kh);
 
       if (error){
@@ -657,7 +677,7 @@ async function onMaKHClick(ma_kh){
 
     const { data, error } = await SB
       .from(TABLE)
-      .select('ma_kh,ten_kh,dia_chi,dien_thoai,lat,lng,ngay_cuoi_cung_checkin', { count:'exact' })
+      .select('ma_kh,ten_kh,dia_chi,phuong_xa,quan_huyen,thanh_pho,dien_thoai,lat,lng,ngay_cuoi_cung_checkin', { count:'exact' })
       .not('lat','is',null).not('lng','is',null)
       .gte('lat', minLat).lte('lat', maxLat)
       .gte('lng', minLng).lte('lng', maxLng)
