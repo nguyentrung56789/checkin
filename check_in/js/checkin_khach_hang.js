@@ -666,9 +666,25 @@ async function getSupabaseLib(){
 
       toast(`Đã xóa ${ma_kh}`, 'ok');
 
-      const coords = getLatLngFromURL();
-      if (coords) runNearby(coords.lat, coords.lng, getRadiusFromUI(), false);
-      else loadData(false);
+const tr = document.querySelector(`tr[data-id="${cssEscapeSafe(ma_kh)}"]`);
+if (tr) tr.remove();
+
+const tbodyRows = $$('#tbody tr');
+
+if (tbodyRows.length === 0) {
+  $('#tbody').innerHTML =
+    `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+}
+
+const countInfo = $('#countInfo');
+if (countInfo) {
+  const oldText = countInfo.textContent || '';
+  const m = oldText.match(/^(\d+)/);
+  if (m) {
+    const next = Math.max(0, Number(m[1]) - 1);
+    countInfo.textContent = oldText.replace(/^\d+/, String(next));
+  }
+}
     }catch(err){
       console.error(err);
       toast('Xóa thất bại: ' + err.message, 'err');
