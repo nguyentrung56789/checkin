@@ -1,51 +1,210 @@
 <!doctype html>
 <html lang="vi">
 <head>
+  <script src="js/auth_token.js"></script>
+  <script> if (!checkAccess()) {}</script>
+
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#111" />
-  <title>Check-in (Camera + GPS + Âm thanh)</title>
-  <link rel="stylesheet" href="css/app_checkin.css" />
+  <meta name="theme-color" content="#111827" />
+  <title>Check-in Camera</title>
+
+  <style>
+    :root{
+      --bar-h:86px;
+      --blue:#4da3ff;
+      --green:#16a34a;
+      --gray:#334155;
+      --text:#f8fafc;
+      --muted:#b7c3d4;
+    }
+    *{box-sizing:border-box}
+    html,body{
+      margin:0;
+      padding:0;
+      width:100%;
+      height:100%;
+      min-height:-webkit-fill-available;
+      background:#050816;
+      color:var(--text);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      overflow:hidden;
+    }
+    .stage{
+      position:fixed;
+      inset:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#050816;
+      z-index:1;
+    }
+    video,.photo,canvas{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      background:#050816;
+    }
+    video,canvas{pointer-events:none}
+    canvas{display:none}
+    .top{
+      position:fixed;
+      top:0;
+      left:0;
+      right:0;
+      z-index:60;
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:14px;
+      padding-top:calc(14px + env(safe-area-inset-top));
+      background:linear-gradient(180deg,rgba(0,0,0,.58),rgba(0,0,0,0));
+    }
+    .who{
+      min-width:0;
+      flex:1;
+      font-size:20px;
+      font-weight:900;
+      line-height:1.2;
+      text-shadow:0 2px 8px rgba(0,0,0,.45);
+    }
+    .who small{
+      display:block;
+      margin-top:4px;
+      color:var(--muted);
+      font-size:13px;
+      font-weight:700;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .bar{
+      position:fixed;
+      left:0;
+      right:0;
+      bottom:0;
+      z-index:60;
+      min-height:var(--bar-h);
+      padding:12px;
+      padding-bottom:calc(12px + env(safe-area-inset-bottom));
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:12px;
+      background:linear-gradient(0deg,rgba(0,0,0,.76),rgba(0,0,0,0));
+    }
+    .btn{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.14);
+      min-height:46px;
+      padding:10px 16px;
+      border-radius:14px;
+      color:#fff;
+      font:inherit;
+      font-size:15px;
+      font-weight:900;
+      cursor:pointer;
+      white-space:nowrap;
+      box-shadow:0 10px 26px rgba(0,0,0,.28);
+    }
+    .btn:disabled{
+      opacity:.45;
+      cursor:not-allowed;
+      filter:grayscale(.15);
+    }
+    .btn-blue{background:var(--blue)}
+    .btn-green{background:var(--green)}
+    .btn-gray{background:var(--gray)}
+    .btn-shot{
+      width:74px;
+      height:74px;
+      padding:0;
+      border-radius:999px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:30px;
+      border:6px solid rgba(255,255,255,.55);
+      background:#127a3a;
+    }
+    .status{
+      position:fixed;
+      left:12px;
+      right:12px;
+      bottom:calc(var(--bar-h) + 18px);
+      z-index:55;
+      display:grid;
+      gap:8px;
+      pointer-events:none;
+    }
+    .pill{
+      width:max-content;
+      max-width:100%;
+      padding:8px 12px;
+      border-radius:999px;
+      background:rgba(15,23,42,.72);
+      border:1px solid rgba(255,255,255,.14);
+      color:#eef5ff;
+      font-size:14px;
+      font-weight:700;
+      backdrop-filter:blur(10px);
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+      box-shadow:0 8px 24px rgba(0,0,0,.22);
+    }
+    .hint{
+      position:fixed;
+      left:18px;
+      right:18px;
+      bottom:calc(var(--bar-h) + 86px);
+      z-index:50;
+      color:#dce8f5;
+      text-align:center;
+      line-height:1.45;
+      text-shadow:0 2px 8px rgba(0,0,0,.58);
+      pointer-events:none;
+    }
+    @media (max-width:520px){
+      :root{--bar-h:92px}
+      .top{gap:10px}
+      .who{font-size:18px}
+      .btn{min-height:44px;padding:9px 13px}
+      .btn-shot{width:68px;height:68px;font-size:28px}
+      .hint{bottom:calc(var(--bar-h) + 84px);font-size:14px}
+    }
+  </style>
 </head>
 <body>
-  <div class="stage" id="stage">
+  <main class="stage">
     <video id="video" autoplay playsinline muted></video>
-    <canvas id="canvas" style="display:none"></canvas>
+    <img id="photo" class="photo" alt="Ảnh check-in" hidden>
+    <canvas id="canvas"></canvas>
 
-    <!-- Nút đè trên camera -->
-    <div class="bar" id="bar">
-      <button id="btnStart"   class="btn btn-blue">Cam</button>
-      <button id="btnShot"    class="btn btn-green" disabled>📸</button>
-      <button id="btnZoomOut" class="btn btn-icon btn-gray" title="Thu nhỏ">➖</button>
-      <button id="btnZoomIn"  class="btn btn-icon btn-gray" title="Phóng to">➕</button>
-      <button id="btnTorch"   class="btn btn-icon btn-gray" title="Đèn">🔦</button>
-      <button id="btnSound"   class="btn btn-icon btn-gray" title="Bật/Tắt tiếng">🔊</button>
-
-      <!-- Nút MENU -->
-      <button id="btnMenu" class="btn btn-gray" style="margin-left:8px">☰ Menu</button>
+    <div class="top">
+      <button id="btnBack" class="btn btn-gray" type="button">←</button>
+      <div class="who">
+        Check-in
+        <small id="nvText">Đang kiểm tra nhân viên...</small>
+      </div>
+      <button id="btnCustomers" class="btn btn-blue" type="button">KH</button>
     </div>
-  </div>
 
-  <div id="tagInfo"></div>
+    <div class="hint" id="hint">Bấm Cam để mở camera, sau đó bấm nút chụp ảnh.</div>
 
-  <div id="toast"></div>
+    <div class="status">
+      <div class="pill" id="gpsText">GPS: lấy khi chụp</div>
+      <div class="pill" id="photoText">Ảnh: chưa chụp</div>
+    </div>
 
-  <iframe id="sink" name="sink" style="display:none"></iframe>
+    <div class="bar">
+      <button id="btnStart" class="btn btn-blue" type="button">Cam</button>
+      <button id="btnShot" class="btn btn-green btn-shot" type="button" disabled>📸</button>
+      <button id="btnRetake" class="btn btn-gray" type="button" disabled>Chụp lại</button>
+    </div>
+  </main>
 
-  <audio id="snapSound"
-         src="https://cdn.jsdelivr.net/gh/naptha/tesseract.js@master/examples/browser/sound/snap.wav"
-         preload="auto"></audio>
-
-  <!-- KHÔNG CÒN mapSheet / mapHeader / mapFrame -->
-
-  <script defer src="../js/app_checkin.js"></script>
-
-  <!-- Chuyển tới menu -->
-  <script>
-    document.getElementById('btnMenu')?.addEventListener('click', () => {
-      location.href = "main.html";
-    });
-  </script>
+  <script defer src="js/app_checkin.js"></script>
 </body>
-
 </html>
