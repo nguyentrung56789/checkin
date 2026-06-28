@@ -97,7 +97,6 @@
     .actions button{ flex:1; }
     #saveBtn{ background:#16a34a; color:white; }
     #gpsBtn{ background:#2563eb; color:white; }
-    #reloadBtn{ background:#f59e0b; color:white; }
     .msg{
       display:none;
       margin-top:12px;
@@ -145,10 +144,9 @@
       <input id="dien_thoai" inputmode="tel" autocomplete="off">
 
       <label>Mã NV</label>
-      <input id="ma_nv" autocomplete="off">
-
-      <label>Tên NV</label>
-      <input id="ten_nv" autocomplete="off">
+      <select id="ma_nv">
+        <option value="">Nhân viên</option>
+      </select>
 
       <div class="grid">
         <div>
@@ -173,10 +171,6 @@
         <button id="gpsBtn" type="button">Lấy vị trí</button>
       </div>
 
-      <div class="actions">
-        <button id="reloadBtn" type="button">Tải lại</button>
-      </div>
-
       <div class="muted">Form popup này chỉ cần có ID khách hàng, không chặn ma_nv.</div>
       <div id="msg" class="msg"></div>
     </form>
@@ -191,7 +185,9 @@
   const idText = document.getElementById("idText");
   const msg = document.getElementById("msg");
   const form = document.getElementById("form");
-  const fields = ["ma_kh","ten_kh","dia_chi","phuong_xa","dien_thoai","ma_nv","ten_nv","lng","lat","Da_mua_hang"];
+  const fields = ["ma_kh","ten_kh","dia_chi","phuong_xa","dien_thoai","ma_nv","lng","lat","Da_mua_hang"];
+  const nvSelect = document.getElementById("ma_nv");
+  const nvNameByCode = new Map();
 
   idText.textContent = rowId || "thiếu";
 
@@ -210,6 +206,11 @@
     return null;
   }
 
+  function getSelectedTenNV(){
+    const code = String(nvSelect.value || "").trim();
+    return nvNameByCode.get(code) || "";
+  }
+
   if (!rowId) {
     showMsg("err", "Thiếu id khách hàng trên URL.");
     return;
@@ -223,12 +224,51 @@
     }
   );
 
+  async function loadNhanVienOptions(selectedMaNV = ""){
+    const current = String(selectedMaNV || "").trim();
+    const { data, error } = await supabase
+      .from("nv_checkin_khach_hang")
+      .select("ma_nv,ten_nv")
+      .not("ma_nv", "is", null)
+      .order("ten_nv", { ascending:true });
+
+    if (error) {
+      showMsg("err", "Lỗi tải danh sách nhân viên: " + error.message);
+      return;
+    }
+
+    nvNameByCode.clear();
+    nvSelect.innerHTML = `<option value="">Nhân viên</option>`;
+
+    (data || []).forEach(r => {
+      const code = String(r.ma_nv || "").trim();
+      if (!code || nvNameByCode.has(code)) return;
+      const name = String(r.ten_nv || "").trim();
+      nvNameByCode.set(code, name);
+
+      const opt = document.createElement("option");
+      opt.value = code;
+      opt.textContent = [code, name].filter(Boolean).join(" - ") || code;
+      nvSelect.appendChild(opt);
+    });
+
+    if (current && !nvNameByCode.has(current)) {
+      nvNameByCode.set(current, "");
+      const opt = document.createElement("option");
+      opt.value = current;
+      opt.textContent = current;
+      nvSelect.appendChild(opt);
+    }
+
+    nvSelect.value = current;
+  }
+
   async function loadRow(){
     showMsg("ok", "Đang tải dữ liệu...");
 
     const { data, error } = await supabase
       .from("nv_checkin_khach_hang")
-      .select("id,ma_kh,ten_kh,dia_chi,phuong_xa,dien_thoai,ma_nv,ten_nv,lng,lat,Da_mua_hang")
+      .select("id,ma_kh,ten_kh,dia_chi,phuong_xa,dien_thoai,ma_nv,lng,lat,Da_mua_hang")
       .eq("id", Number(rowId))
       .maybeSingle();
 
@@ -240,6 +280,8 @@
       showMsg("err", "Không tìm thấy khách hàng id = " + rowId);
       return;
     }
+
+    await loadNhanVienOptions(data.ma_nv || "");
 
     fields.forEach(name => {
       if (name === "Da_mua_hang") {
@@ -264,6 +306,7 @@
       const value = input(name).value.trim();
       payload[name] = value === "" ? null : value;
     });
+    payload.ten_nv = getSelectedTenNV() || null;
 
     const { error } = await supabase
       .from("nv_checkin_khach_hang")
@@ -284,10 +327,20 @@
     } catch {}
   });
 
-  document.getElementById("gpsBtn").addEventListener("click", () => {
+  document.getElementById("gpsBtn").addEventListener("click", async () => {
     if (!navigator.geolocation) {
       showMsg("err", "Trình duyệt không hỗ trợ GPS.");
       return;
+    }
+
+    if (navigator.permissions && navigator.permissions.query) {
+      try {
+        const permission = await navigator.permissions.query({ name:"geolocation" });
+        if (permission.state === "denied") {
+          showMsg("err", "Bạn đang chặn quyền vị trí. Hãy bấm biểu tượng ổ khóa/cài đặt cạnh thanh địa chỉ, cho phép Vị trí rồi mở lại form.");
+          return;
+        }
+      } catch {}
     }
 
     showMsg("ok", "Đang lấy vị trí...");
@@ -298,13 +351,24 @@
         showMsg("ok", "Đã lấy vị trí. Bấm Lưu cập nhật để lưu.");
       },
       err => {
+        if (err.code === 1) {
+          showMsg("err", "Bạn chưa cho phép vị trí. Hãy bật quyền Vị trí cho trang web rồi bấm lại Lấy vị trí.");
+          return;
+        }
+        if (err.code === 2) {
+          showMsg("err", "Không xác định được vị trí. Hãy bật GPS/Wi-Fi/vị trí trên máy rồi thử lại.");
+          return;
+        }
+        if (err.code === 3) {
+          showMsg("err", "Lấy vị trí quá lâu. Hãy bật vị trí/GPS rồi thử lại.");
+          return;
+        }
         showMsg("err", "Không lấy được vị trí: " + (err.message || "Bạn chưa cấp quyền GPS"));
       },
       { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
     );
   });
 
-  document.getElementById("reloadBtn").onclick = loadRow;
   document.getElementById("closeBtn").onclick = () => window.close();
 
   await loadRow();
