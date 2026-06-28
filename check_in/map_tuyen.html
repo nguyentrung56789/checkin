@@ -168,6 +168,10 @@
 (async function(){
 
   const GEOJSON_URL = "./geo/haiphong_phuong_moi.geojson";
+  const GEOJSON_FALLBACK_URLS = [
+    "https://huggingface.co/datasets/myleo198/sapnhap-bando-vn/resolve/main/geo/communes.geojson",
+    "https://huggingface.co/datasets/tmquan/sapnhap-bando-vn/resolve/main/geo/communes.geojson"
+  ];
 
   const params = new URLSearchParams(location.search);
   const currentMaNV = String(params.get("ma_nv") || "").trim();
@@ -307,6 +311,34 @@
     );
   }
 
+  function isHaiPhongFeature(feature){
+    const p = feature && feature.properties ? feature.properties : {};
+    const text = [
+      p.parent_ten,
+      p.parent_name,
+      p.tinh,
+      p.tentinh,
+      p.ten_tinh,
+      p.province,
+      p.address,
+      p.embed_text
+    ].map(v => normalizeName(v)).join(" ");
+
+    return text.includes("hai phong");
+  }
+
+  function filterHaiPhongGeoJson(geo){
+    if (!geo || !Array.isArray(geo.features)) return geo;
+
+    const hpFeatures = geo.features.filter(isHaiPhongFeature);
+    if (!hpFeatures.length) return geo;
+
+    return {
+      type:"FeatureCollection",
+      features:hpFeatures
+    };
+  }
+
   function getWardKeyFromRow(row){
     return normalizeName(
       row.phuong_moi ||
@@ -442,19 +474,34 @@
     return allRows;
   }
 
-  async function loadHaiPhongGeoJson(){
-    try {
-      const res = await fetch(GEOJSON_URL, { cache:"no-store" });
-      if (!res.ok) throw new Error("GeoJSON not found");
-      const geo = await res.json();
-      if (!geo || geo.type !== "FeatureCollection" || !Array.isArray(geo.features)) {
-        throw new Error("GeoJSON sai định dạng FeatureCollection");
-      }
-      return normalizeGeoJsonProjection(geo);
-    } catch (err) {
-      console.warn("Không tải được GeoJSON Hải Phòng:", err);
-      return null;
+  async function fetchGeoJsonFromUrl(url){
+    const res = await fetch(url, { cache:"no-store" });
+    if (!res.ok) throw new Error(`Không tải được ${url}: ${res.status}`);
+
+    const geo = await res.json();
+    if (!geo || geo.type !== "FeatureCollection" || !Array.isArray(geo.features)) {
+      throw new Error(`GeoJSON sai định dạng FeatureCollection: ${url}`);
     }
+
+    return normalizeGeoJsonProjection(filterHaiPhongGeoJson(geo));
+  }
+
+  async function loadHaiPhongGeoJson(){
+    const urls = [GEOJSON_URL, ...GEOJSON_FALLBACK_URLS];
+
+    for (const url of urls) {
+      try {
+        const geo = await fetchGeoJsonFromUrl(url);
+        if (geo && Array.isArray(geo.features) && geo.features.length) {
+          console.log("Đã tải GeoJSON:", url, geo.features.length, "phường/xã");
+          return geo;
+        }
+      } catch (err) {
+        console.warn("Không tải được GeoJSON:", url, err);
+      }
+    }
+
+    return null;
   }
 
   const data = await fetchAllRows();
