@@ -3,124 +3,187 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-  <title>Bản đồ Check-in KH</title>
+  <title>Form khách hàng check-in</title>
 
-  <!-- Leaflet -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <!-- Supabase -->
   <script src="./js/internal_key.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <style>
-    html,body{
-      margin:0; padding:0;
-      height:100%;
-      overflow:hidden;
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      min-height:100vh;
+      background:#f3f4f6;
       font-family:system-ui;
+      color:#111827;
     }
-    #map{
-      position:fixed;
-      inset:0;
-      width:100%;
-      height:100%;
+    .wrap{
+      width:min(720px,100%);
+      margin:0 auto;
+      padding:16px;
     }
-
-    .leaflet-control-zoom{
-      display:none !important;
-    }
-
-    .top-controls{
-      position:fixed;
-      top:10px;
-      left:10px;
-      right:10px;
-      z-index:2000;
+    .head{
       display:flex;
-      flex-direction:column;
-      gap:8px;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:14px;
     }
-
-    .row{
-      display:flex;
-      gap:8px;
+    h1{
+      margin:0;
+      font-size:22px;
+      line-height:1.2;
+    }
+    .id-pill{
+      padding:6px 10px;
+      border-radius:999px;
+      background:#e5e7eb;
+      font-weight:700;
+      white-space:nowrap;
+    }
+    form{
+      background:white;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      padding:14px;
+      box-shadow:0 8px 24px rgba(15,23,42,0.08);
+    }
+    label{
+      display:block;
+      margin-top:12px;
+      font-size:13px;
+      font-weight:700;
+      color:#374151;
+    }
+    input, textarea{
       width:100%;
-    }
-
-    .row select, #searchBox{
-      flex:1;
-      padding:6px 8px;
-      font-size:14px;
-      border-radius:8px;
+      margin-top:6px;
+      padding:11px 12px;
       border:1px solid #d1d5db;
+      border-radius:8px;
+      font:inherit;
       background:white;
     }
-
-    #gpsBtn{
-      width:40px;
-      height:40px;
-      border-radius:50%;
-      border:none;
-      background:white;
+    textarea{
+      min-height:80px;
+      resize:vertical;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+    }
+    .actions{
       display:flex;
-      align-items:center;
-      justify-content:center;
-      box-shadow:0 4px 10px rgba(0,0,0,0.3);
-      font-size:20px;
+      gap:10px;
+      margin-top:16px;
+    }
+    button, a.btn{
+      flex:1;
+      border:0;
+      border-radius:8px;
+      padding:12px;
+      font-weight:800;
+      text-align:center;
+      text-decoration:none;
       cursor:pointer;
-      flex:0 0 40px;
+      font:inherit;
     }
-
-    .mk-red,
-    .mk-orange,
-    .mk-purple{
+    button{
+      background:#16a34a;
       color:white;
-      width:26px;
-      height:26px;
-      border-radius:50%;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      border:2px solid white;
-      font-weight:600;
-      font-size:12px;
-      box-shadow:0 0 0 1px rgba(0,0,0,0.3),0 4px 8px rgba(0,0,0,0.2);
     }
-
-    .mk-red{ background:#ef4444; }
-    .mk-orange{ background:#f59e0b; }
-    .mk-purple{ background:#8b5cf6; }
+    a.btn{
+      background:#2563eb;
+      color:white;
+    }
+    .msg{
+      margin-top:12px;
+      padding:10px 12px;
+      border-radius:8px;
+      display:none;
+      font-weight:700;
+    }
+    .msg.ok{
+      display:block;
+      background:#dcfce7;
+      color:#166534;
+    }
+    .msg.err{
+      display:block;
+      background:#fee2e2;
+      color:#991b1b;
+    }
+    @media (max-width:560px){
+      .grid{ grid-template-columns:1fr; }
+      .head{ align-items:flex-start; flex-direction:column; }
+      .actions{ flex-direction:column; }
+    }
   </style>
 </head>
 
 <body>
+  <div class="wrap">
+    <div class="head">
+      <h1>Form khách hàng check-in</h1>
+      <div class="id-pill">ID: <span id="showId"></span></div>
+    </div>
 
-<div class="top-controls">
-  <div class="row">
-    <button id="gpsBtn">📍</button>
+    <form id="form">
+      <label>Mã KH</label>
+      <input id="ma_kh" name="ma_kh" autocomplete="off">
 
-    <select id="levelFilter">
-      <option value="">Tất cả</option>
-      <option value="1">1 màu đỏ check in về (chưa có số đt)</option>
-      <option value="2">2 màu cam (đã check in có đt)</option>
-      <option value="3">3 màu tím (nv đã checkin ở tháng này)</option>
-      <option value="buy">Khách đã mua hàng</option>
-      <option value="nobuy">Khách chưa mua hàng</option>
-    </select>
+      <label>Tên KH</label>
+      <input id="ten_kh" name="ten_kh" autocomplete="off">
 
-    <select id="nvFilter">
-      <option value="">Nhân viên</option>
-    </select>
+      <label>Địa chỉ</label>
+      <textarea id="dia_chi" name="dia_chi"></textarea>
+
+      <label>Điện thoại</label>
+      <input id="dien_thoai" name="dien_thoai" inputmode="tel" autocomplete="off">
+
+      <label>Mã NV</label>
+      <input id="ma_nv" name="ma_nv" autocomplete="off">
+
+      <div class="grid">
+        <div>
+          <label>Kinh độ lng</label>
+          <input id="lng" name="lng" inputmode="decimal" autocomplete="off">
+        </div>
+        <div>
+          <label>Vĩ độ lat</label>
+          <input id="lat" name="lat" inputmode="decimal" autocomplete="off">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit">Lưu cập nhật</button>
+        <a id="mapLink" class="btn" href="#" target="_blank" rel="noopener">Chỉ đường</a>
+      </div>
+
+      <div id="msg" class="msg"></div>
+    </form>
   </div>
-
-  <input id="searchBox" type="text" placeholder="Tìm kiếm KH...">
-</div>
-
-<div id="map"></div>
 
 <script>
 (async function(){
+  const params = new URLSearchParams(location.search);
+  const id = params.get("id");
+  const msg = document.getElementById("msg");
+  const showId = document.getElementById("showId");
+
+  function show(type, text){
+    msg.className = "msg " + type;
+    msg.textContent = text;
+  }
+
+  if (!id) {
+    showId.textContent = "thiếu";
+    show("err", "Thiếu id trên URL. Ví dụ: checkin_khach_hang_form.html?id=1");
+    return;
+  }
+
+  showId.textContent = id;
 
   const supabase = window.supabase.createClient(
     window.getConfig("url"),
@@ -130,349 +193,72 @@
     }
   );
 
-  const map = L.map("map", { zoomControl:false }).setView([20.85,106.68], 12);
+  const fields = ["ma_kh", "ten_kh", "dia_chi", "dien_thoai", "ma_nv", "lng", "lat"];
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",{
-    maxZoom:19
-  }).addTo(map);
+  function setMapLink(){
+    const lat = document.getElementById("lat").value.trim();
+    const lng = document.getElementById("lng").value.trim();
+    const a = document.getElementById("mapLink");
 
-  function toNumber(v, fallback = 0){
-    if (v === null || v === undefined || v === "") return fallback;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
-  }
-
-  function normalizePhone(v){
-    return String(v || "").replace(/\D/g, "").trim();
-  }
-
-  function isBought(v){
-    if (v === true) return true;
-    if (v === false) return false;
-    const s = String(v || "").trim().toLowerCase();
-    return s === "true" || s === "1" || s === "yes" || s === "đã mua hàng" || s === "da mua hang";
-  }
-
-  function getLevel(row){
-    const hasPhone = normalizePhone(row.dien_thoai) !== "";
-    const checkinMonth = toNumber(row.checkin_thang, 0);
-
-    if (checkinMonth > 0) return "3";
-    if (hasPhone) return "2";
-    return "1";
-  }
-
-  function getColor(row){
-    const level = getLevel(row);
-    if (level === "3") return "purple";
-    if (level === "2") return "orange";
-    return "red";
-  }
-
-  function getMarkerClass(color){
-    if (color === "purple") return "mk-purple";
-    if (color === "orange") return "mk-orange";
-    return "mk-red";
-  }
-
-  function getMarkerLabel(row, index){
-    const n = toNumber(row.checkin_thang, 0);
-    if (n > 0) return n;
-    return index + 1;
-  }
-
-  async function fetchAllRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin_khach_hang")
-        .select("lat,lng,ten_kh,ma_kh,dia_chi,dien_thoai,ma_nv,ten_nv,Da_mua_hang,checkin_thang")
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allRows = allRows.concat(data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  // ===== LẤY TOÀN BỘ LỊCH SỬ CHECK-IN TỪ TRƯỚC TỚI GIỜ =====
-  async function fetchAllCheckinRows() {
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("nv_checkin")
-        .select("ma_kh")
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allRows = allRows.concat(data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  const data = await fetchAllRows();
-  console.log("Tổng rows lấy được:", data.length);
-
-  const checkinHistory = await fetchAllCheckinRows();
-  console.log("Tổng lịch sử check-in:", checkinHistory.length);
-
-  // ===== TỰ ĐẾM TỔNG CHECK-IN TỪ TRƯỚC TỚI GIỜ THEO KHÁCH HÀNG =====
-  const tongCheckinTheoKH = new Map();
-
-  checkinHistory.forEach(r => {
-    const khKey = String(r.ma_kh || "").trim();
-    if (!khKey) return;
-
-    const current = tongCheckinTheoKH.get(khKey) || 0;
-    tongCheckinTheoKH.set(khKey, current + 1);
-  });
-
-  console.log("Tổng check-in từ trước tới giờ theo KH:", tongCheckinTheoKH);
-
-  let points = [];
-  let markers = [];
-
-  data.forEach((r,i)=>{
-    const lat = parseFloat(String(r.lat ?? "").trim());
-    const lng = parseFloat(String(r.lng ?? "").trim());
-    if(!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-
-    const stt = getMarkerLabel(r, i);
-    const level = getLevel(r);
-    const color = getColor(r);
-    const markerClass = getMarkerClass(color);
-    const bought = isBought(r.Da_mua_hang);
-
-    const icon = L.divIcon({
-      html:`<div class="${markerClass}">${stt}</div>`,
-      iconSize:[26,26],
-      iconAnchor:[13,13],
-      className:""
-    });
-
-    const googleMapLink = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-
-    const khKey = String(r.ma_kh || "").trim();
-    const tongCheckinKH = tongCheckinTheoKH.get(khKey) || 0;
-
-    const mk = L.marker([lat,lng],{icon}).bindPopup(`
-      <b>${r.ten_kh || "Không tên"}</b><br>
-      Mã KH: ${r.ma_kh || ""}<br>
-      Địa chỉ: ${r.dia_chi || ""}<br>
-      ĐT: ${r.dien_thoai || ""}<br>
-      NV: ${r.ten_nv || r.ma_nv || ""}<br>
-      Tổng check-in KH: <b>${tongCheckinKH}</b><br>
-      Checkin tháng: <b>${toNumber(r.checkin_thang, 0)}</b><br>
-      Cấp độ: <b>${level}</b><br>
-      Màu: <b>${
-        color === "purple" ? "Tím" :
-        color === "orange" ? "Cam" :
-        "Đỏ"
-      }</b><br>
-      Mua hàng: <b>${bought ? "Đã mua" : "Chưa mua"}</b>
-
-      <br><br>
-      <a href="${googleMapLink}"
-         target="_blank"
-         rel="noopener"
-         style="
-           display:block;
-           padding:10px 12px;
-           background:#2563eb;
-           color:white;
-           text-align:center;
-           border-radius:8px;
-           text-decoration:none;
-           font-weight:700;
-         ">
-         📍 Chỉ đường Google Map
-      </a>
-    `);
-
-    mk.addTo(map);
-
-    points.push({
-      stt,
-      lat,
-      lng,
-      marker: mk,
-      color,
-      level,
-      bought,
-      nvCode: String(r.ma_nv || "").trim(),
-      nvName: String(r.ten_nv || "").trim(),
-      nvPhone: String(r.dien_thoai || "").trim(),
-      row: r
-    });
-
-    markers.push(mk);
-  });
-
-  if(markers.length){
-    const grp = L.featureGroup(markers);
-    map.fitBounds(grp.getBounds(),{padding:[50,50]});
-  }
-
-  let userMarker = null;
-  let userCircle = null;
-  let lastLat = null;
-  let lastLng = null;
-
-  function showGPS(lat,lng){
-    lastLat = lat;
-    lastLng = lng;
-
-    if(userMarker){
-      userMarker.setLatLng([lat,lng]);
+    if (lat && lng) {
+      a.href = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(lat)},${encodeURIComponent(lng)}`;
     } else {
-      userMarker = L.circleMarker([lat,lng],{
-        radius:8,
-        color:"#b91c1c",
-        fillColor:"#ef4444",
-        fillOpacity:1,
-        weight:3
-      }).addTo(map);
-    }
-
-    if(userCircle){
-      userCircle.setLatLng([lat,lng]);
-    } else {
-      userCircle = L.circle([lat,lng],{
-        radius:100,
-        color:"#f87171",
-        fillColor:"#fecaca",
-        fillOpacity:0.3,
-        weight:1
-      }).addTo(map);
+      a.href = "#";
     }
   }
 
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(pos=>{
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+  const { data, error } = await supabase
+    .from("nv_checkin_khach_hang")
+    .select("id,ma_kh,ten_kh,dia_chi,dien_thoai,ma_nv,lng,lat")
+    .eq("id", id)
+    .maybeSingle();
 
-      showGPS(lat,lng);
-      map.setView([lat,lng],18);
-    });
-
-    navigator.geolocation.watchPosition(
-      pos=>{
-        showGPS(pos.coords.latitude, pos.coords.longitude);
-      },
-      undefined,
-      { enableHighAccuracy:true, timeout:3000, maximumAge:0 }
-    );
+  if (error) {
+    show("err", "Lỗi tải dữ liệu: " + error.message);
+    return;
   }
 
-  document.getElementById("gpsBtn").onclick = ()=>{
-    if(lastLat && lastLng){
-      map.setView([lastLat,lastLng],18);
-    }
-  };
+  if (!data) {
+    show("err", "Không tìm thấy khách hàng có id = " + id);
+    return;
+  }
 
-  const nvFilter = document.getElementById("nvFilter");
-  const nvMap = new Map();
-
-  points.forEach(p => {
-    if (!p.nvCode) return;
-
-    if (!nvMap.has(p.nvCode)) {
-      const label = [p.nvCode, p.nvName].filter(Boolean).join(" - ") || p.nvCode;
-      nvMap.set(p.nvCode, label);
-    }
+  fields.forEach(name => {
+    document.getElementById(name).value = data[name] ?? "";
   });
+  setMapLink();
 
-  [...nvMap.entries()]
-    .sort((a, b) => a[1].localeCompare(b[1], "vi"))
-    .forEach(([code, label]) => {
-      const opt = document.createElement("option");
-      opt.value = code;
-      opt.textContent = label;
-      nvFilter.appendChild(opt);
+  document.getElementById("lat").addEventListener("input", setMapLink);
+  document.getElementById("lng").addEventListener("input", setMapLink);
+
+  document.getElementById("form").addEventListener("submit", async e => {
+    e.preventDefault();
+
+    const payload = {};
+    fields.forEach(name => {
+      const value = document.getElementById(name).value.trim();
+      payload[name] = value === "" ? null : value;
     });
 
-  const levelFilter = document.getElementById("levelFilter");
-  const searchBox   = document.getElementById("searchBox");
+    const { error: updateError } = await supabase
+      .from("nv_checkin_khach_hang")
+      .update(payload)
+      .eq("id", id);
 
-  function applyFilter(){
-    const fLevel = levelFilter.value;
-    const fNV    = nvFilter.value;
-    const q      = searchBox.value.trim().toLowerCase();
-
-    points.forEach(p=>{
-      const r = p.row;
-      let ok = true;
-
-      if (fLevel === "1" || fLevel === "2" || fLevel === "3") {
-        if (p.level !== fLevel) ok = false;
-      }
-
-      if (fLevel === "buy") {
-        if (!p.bought) ok = false;
-      }
-
-      if (fLevel === "nobuy") {
-        if (p.bought) ok = false;
-      }
-
-      if (fNV) {
-        if (p.nvCode !== fNV) ok = false;
-      }
-
-      if(q){
-        const text = `
-          ${r.ma_kh || ""}
-          ${r.ten_kh || ""}
-          ${r.dia_chi || ""}
-          ${r.dien_thoai || ""}
-          ${r.ghi_chu || ""}
-          ${r.ma_nv || ""}
-          ${r.ten_nv || ""}
-          ${r.checkin_thang || ""}
-          ${p.bought ? "da mua hang" : "chua mua hang"}
-        `.toLowerCase();
-
-        if(!text.includes(q)) ok = false;
-      }
-
-      if(ok){
-        if(!map.hasLayer(p.marker)) p.marker.addTo(map);
-      }else{
-        if(map.hasLayer(p.marker)) map.removeLayer(p.marker);
-      }
-    });
-
-    const remain = points.filter(p => map.hasLayer(p.marker));
-    if(remain.length === 1){
-      map.setView([remain[0].lat, remain[0].lng], 18);
+    if (updateError) {
+      show("err", "Lỗi lưu: " + updateError.message);
+      return;
     }
-  }
 
-  levelFilter.onchange = applyFilter;
-  nvFilter.onchange    = applyFilter;
-  searchBox.oninput    = applyFilter;
-
-})();
+    show("ok", "Đã lưu cập nhật");
+    setMapLink();
+  });
+})().catch(err => {
+  const msg = document.getElementById("msg");
+  msg.className = "msg err";
+  msg.textContent = "Lỗi: " + (err.message || err);
+  console.error(err);
+});
 </script>
-
 </body>
 </html>
