@@ -34,11 +34,6 @@
       padding:0 16px;
     }
 
-    h1{
-      font-size:24px;
-      margin:0 0 16px;
-    }
-
     .bar{
       display:flex;
       gap:8px;
@@ -139,9 +134,7 @@
       transition:transform .06s ease, box-shadow .06s ease, filter .08s ease;
     }
 
-    .ma-kh-btn:hover{
-      filter:brightness(1.06);
-    }
+    .ma-kh-btn:hover{filter:brightness(1.06)}
 
     .ma-kh-btn:active{
       transform:translateY(1px) scale(.97);
@@ -231,20 +224,14 @@
     }
 
     @media (max-width:640px){
-      .grid{
-        grid-template-columns:1fr;
-      }
-
-      .grid .span2{
-        grid-column:auto;
-      }
+      .grid{grid-template-columns:1fr}
+      .grid .span2{grid-column:auto}
     }
   </style>
 </head>
 
 <body>
 <div class="wrap">
-
   <div class="bar">
     <div class="bar-left">
       <button id="btnAdd" class="btn btn-primary">+ Thêm</button>
@@ -289,10 +276,7 @@
     <h3 id="modalTitle">Thêm khách hàng</h3>
 
     <div class="grid">
-      <label class="span2" id="maKhRow">
-        Mã KH (khóa):
-        <input id="f_ma_kh" class="input" readonly>
-      </label>
+      <input id="f_ma_kh" type="hidden">
 
       <label class="span2">
         Tên KH:
@@ -301,7 +285,7 @@
 
       <label class="span2">
         Địa chỉ:
-        <input id="f_dia_chi" class="input" placeholder="Số nhà, đường...">
+        <input id="f_dia_chi" class="input" placeholder="Tự lấy theo tọa độ">
       </label>
 
       <label>
@@ -349,11 +333,25 @@
     if (el) el.textContent = text || '';
   }
 
-  function getAddressPart(address, keys) {
+  function cleanName(value) {
+    return String(value || '')
+      .replace(/^Phường\s+/i, '')
+      .replace(/^Xã\s+/i, '')
+      .replace(/^Quận\s+/i, '')
+      .replace(/^Huyện\s+/i, '')
+      .replace(/^Thành phố\s+/i, '')
+      .trim();
+  }
+
+  function firstValue(obj, keys) {
     for (const key of keys) {
-      if (address && address[key]) return address[key];
+      if (obj && obj[key]) return obj[key];
     }
     return '';
+  }
+
+  function findByRegex(parts, regex) {
+    return parts.find(p => regex.test(p)) || '';
   }
 
   async function fillAddressByCurrentLocation() {
@@ -372,43 +370,62 @@
       setVal('f_lon', lon);
 
       try {
-        setHint('Đang lấy phường/quận/thành phố...');
+        setHint('Đang lấy địa chỉ...');
 
         const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&accept-language=vi`;
         const res = await fetch(url);
         const data = await res.json();
-        const address = data.address || {};
 
-        const phuongXa = getAddressPart(address, [
-          'ward',
-          'suburb',
-          'quarter',
-          'neighbourhood',
-          'village',
-          'town'
-        ]);
+        const a = data.address || {};
+        const parts = String(data.display_name || '')
+          .split(',')
+          .map(x => x.trim())
+          .filter(Boolean);
 
-        const quanHuyen = getAddressPart(address, [
-          'city_district',
-          'district',
-          'county',
-          'municipality'
-        ]);
+        const diaChi =
+          [a.house_number, a.road].filter(Boolean).join(' ') ||
+          firstValue(a, ['road', 'pedestrian', 'footway', 'path']) ||
+          parts[0] ||
+          '';
 
-        const thanhPho = getAddressPart(address, [
-          'city',
-          'state',
-          'province'
-        ]);
+        const phuongXaRaw =
+          firstValue(a, ['ward', 'quarter', 'suburb', 'neighbourhood', 'village', 'town']) ||
+          findByRegex(parts, /^(Phường|Xã|Thị trấn|Hàng|Kênh)/i) ||
+          '';
 
-        setVal('f_phuong_xa', phuongXa);
-        setVal('f_quan_huyen', quanHuyen);
-        setVal('f_thanh_pho', thanhPho);
+        let quanHuyenRaw =
+          firstValue(a, ['city_district', 'district', 'county', 'municipality', 'borough']) ||
+          findByRegex(parts, /^(Quận|Huyện|Thị xã)\s+/i) ||
+          '';
+
+        let thanhPhoRaw =
+          firstValue(a, ['state', 'province']) ||
+          findByRegex(parts, /Hải Phòng|Hà Nội|Đà Nẵng|Hồ Chí Minh|Cần Thơ/i) ||
+          '';
+
+        if (!quanHuyenRaw) {
+          const cityValue = firstValue(a, ['city']);
+          if (/^Phường\s+/i.test(cityValue)) {
+            quanHuyenRaw = cityValue;
+          }
+        }
+
+        if (!thanhPhoRaw) {
+          const cityValue = firstValue(a, ['city']);
+          if (!/^Phường\s+/i.test(cityValue)) {
+            thanhPhoRaw = cityValue;
+          }
+        }
+
+        setVal('f_dia_chi', diaChi);
+        setVal('f_phuong_xa', cleanName(phuongXaRaw));
+        setVal('f_quan_huyen', cleanName(quanHuyenRaw));
+        setVal('f_thanh_pho', thanhPhoRaw);
 
         setHint('Đã lấy địa chỉ theo tọa độ');
       } catch (err) {
         console.error(err);
-        setHint('Không lấy được phường/quận/thành phố');
+        setHint('Không lấy được địa chỉ');
       }
     }, function() {
       setHint('Bạn chưa cho phép lấy vị trí');
@@ -424,6 +441,7 @@
 
     if (btnAdd) {
       btnAdd.addEventListener('click', function() {
+        setVal('f_dia_chi', '');
         setVal('f_phuong_xa', '');
         setVal('f_quan_huyen', '');
         setVal('f_thanh_pho', '');
