@@ -434,11 +434,11 @@
       const layer = L.geoJSON(geojson, {
         style: {
           color,
-          weight: 2,
+          weight: 2.5,
           opacity: 0.95,
           fillColor: color,
-          fillOpacity: 0.06,
-          dashArray: "6 4"
+          fillOpacity: 0.18,
+          dashArray: null
         }
       }).bindPopup(`<b>${esc(label)}</b>`);
 
@@ -991,9 +991,12 @@
       if (visible) {
         if (!map.hasLayer(layer)) layer.addTo(boundaryLayer);
         layer.setStyle({
-          weight: selected ? 5 : 2,
-          fillOpacity: selected ? 0.14 : 0.06,
-          dashArray: selected ? null : "6 4"
+          color: wardBoundaryColor,
+          weight: selected ? 5 : 2.5,
+          opacity: 0.95,
+          fillColor: wardBoundaryColor,
+          fillOpacity: selected ? 0.34 : 0.18,
+          dashArray: null
         });
         if (selected) layer.bringToFront();
       } else if (map.hasLayer(layer)) {
