@@ -309,9 +309,18 @@
     maxZoom:19
   }).addTo(map);
 
+  map.createPane("wardBoundaryPane");
+  map.getPane("wardBoundaryPane").style.zIndex = 350;
+  map.getPane("wardBoundaryPane").style.pointerEvents = "auto";
+
   const boundaryLayer = L.layerGroup().addTo(map);
   const wardBoundaryByKey = new Map();
-  const wardBoundaryColor = "#ef4444";
+  const wardColors = [
+    "#ef4444", "#f97316", "#f59e0b", "#eab308",
+    "#84cc16", "#22c55e", "#14b8a6", "#06b6d4",
+    "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6",
+    "#a855f7", "#d946ef", "#ec4899", "#f43f5e"
+  ];
 
   function esc(v){
     return String(v ?? "").replace(/[&<>"']/g, c => ({
@@ -341,6 +350,19 @@
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/đ/g, "d")
       .replace(/\s+/g, " ");
+  }
+
+  function hashText(text){
+    const s = normalizeText(text);
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  }
+
+  function getWardBoundaryColor(label){
+    return wardColors[hashText(label) % wardColors.length];
   }
 
   function getWardCityLabel(row){
@@ -407,6 +429,7 @@
       const { data, error } = await supabase
         .from("dm_phuong_xa_vn")
         .select("*")
+        .ilike("tinh_tp", "%Hải Phòng%")
         .range(from, from + pageSize - 1);
 
       if (error) {
@@ -430,18 +453,20 @@
       const geojson = normalizeGeoJson(row);
       if (!key || !geojson) return;
 
-      const color = wardBoundaryColor;
+      const color = getWardBoundaryColor(label);
       const layer = L.geoJSON(geojson, {
+        pane: "wardBoundaryPane",
         style: {
           color,
           weight: 2.5,
           opacity: 0.95,
           fillColor: color,
-          fillOpacity: 0.18,
+          fillOpacity: 0.24,
           dashArray: null
         }
       }).bindPopup(`<b>${esc(label)}</b>`);
 
+      layer._wardColor = color;
       layer.addTo(boundaryLayer);
 
       try {
@@ -987,15 +1012,16 @@
     wardBoundaryByKey.forEach((layer, key) => {
       const selected = selectedWardKeys.size && selectedWardKeys.has(key);
       const visible = !selectedWardKeys.size || selected;
+      const color = layer._wardColor || getWardBoundaryColor(key);
 
       if (visible) {
         if (!map.hasLayer(layer)) layer.addTo(boundaryLayer);
         layer.setStyle({
-          color: wardBoundaryColor,
+          color,
           weight: selected ? 5 : 2.5,
           opacity: 0.95,
-          fillColor: wardBoundaryColor,
-          fillOpacity: selected ? 0.34 : 0.18,
+          fillColor: color,
+          fillOpacity: selected ? 0.42 : 0.24,
           dashArray: null
         });
         if (selected) layer.bringToFront();
