@@ -311,11 +311,7 @@
 
   const boundaryLayer = L.layerGroup().addTo(map);
   const wardBoundaryByKey = new Map();
-  const wardColors = [
-    "#ef4444", "#f97316", "#f59e0b", "#22c55e",
-    "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899",
-    "#14b8a6", "#84cc16", "#a855f7", "#0ea5e9"
-  ];
+  const wardBoundaryColor = "#ef4444";
 
   function esc(v){
     return String(v ?? "").replace(/[&<>"']/g, c => ({
@@ -345,21 +341,6 @@
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/đ/g, "d")
       .replace(/\s+/g, " ");
-  }
-
-  function hashText(text){
-    const s = normalizeText(text);
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-      h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-    }
-    return Math.abs(h);
-  }
-
-  function getWardColor(label, savedColor){
-    const color = String(savedColor || "").trim();
-    if (/^#[0-9a-f]{6}$/i.test(color)) return color;
-    return wardColors[hashText(label) % wardColors.length];
   }
 
   function getWardCityLabel(row){
@@ -449,7 +430,7 @@
       const geojson = normalizeGeoJson(row);
       if (!key || !geojson) return;
 
-      const color = getWardColor(label, row.mau_ranh_gioi || row.mau_vien || row.color);
+      const color = wardBoundaryColor;
       const layer = L.geoJSON(geojson, {
         style: {
           color,
