@@ -85,17 +85,6 @@
     .mk-red{ background:#ef4444; }
     .mk-orange{ background:#f59e0b; }
     .mk-purple{ background:#8b5cf6; }
-    .ward-boundary-label{
-      padding:3px 7px;
-      border-radius:999px;
-      background:rgba(255,255,255,0.92);
-      border:1px solid rgba(17,24,39,0.14);
-      color:#111827;
-      font-size:12px;
-      font-weight:700;
-      white-space:nowrap;
-      box-shadow:0 4px 12px rgba(0,0,0,0.16);
-    }
     .search-row{
       display:flex;
       gap:8px;
@@ -309,20 +298,6 @@
     maxZoom:19
   }).addTo(map);
 
-  map.createPane("wardBoundaryPane");
-  map.getPane("wardBoundaryPane").style.zIndex = 350;
-  map.getPane("wardBoundaryPane").style.pointerEvents = "auto";
-
-  const boundaryLayer = L.layerGroup().addTo(map);
-  const wardBoundaryByKey = new Map();
-  const wardBoundaryLabelByKey = new Map();
-  const wardColors = [
-    "#ef4444", "#f97316", "#f59e0b", "#eab308",
-    "#84cc16", "#22c55e", "#14b8a6", "#06b6d4",
-    "#0ea5e9", "#3b82f6", "#6366f1", "#8b5cf6",
-    "#a855f7", "#d946ef", "#ec4899", "#f43f5e"
-  ];
-
   function esc(v){
     return String(v ?? "").replace(/[&<>"']/g, c => ({
       "&":"&amp;",
@@ -353,19 +328,6 @@
       .replace(/\s+/g, " ");
   }
 
-  function hashText(text){
-    const s = normalizeText(text);
-    let h = 0;
-    for (let i = 0; i < s.length; i++) {
-      h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-    }
-    return Math.abs(h);
-  }
-
-  function getWardBoundaryColor(label){
-    return wardColors[hashText(label) % wardColors.length];
-  }
-
   function getWardCityLabel(row){
     const ward = String(row.phuong_xa || "").trim();
     const city = String(row.thanh_pho || "").trim();
@@ -373,238 +335,6 @@
     if (ward) return ward;
     if (city) return city;
     return "";
-  }
-
-  function getBoundaryWardLabel(row){
-    const name = String(row.ten_phuong || row.name || row.phuong_xa || "").trim();
-    const type = String(row.loai || "").trim();
-    const city = String(row.tinh_tp || row.thanh_pho || row.city || "").trim();
-    const ward = type && name && !new RegExp(`^${type}\\s`, "i").test(name)
-      ? `${type} ${name}`
-      : name;
-
-    if (ward && city) return `${ward} - ${city}`;
-    if (ward) return ward;
-    return city;
-  }
-
-  function coordKey(point){
-    return `${Number(point[0]).toFixed(7)},${Number(point[1]).toFixed(7)}`;
-  }
-
-  function sameCoord(a, b){
-    return coordKey(a) === coordKey(b);
-  }
-
-  function closeRing(ring){
-    if (ring.length < 3) return null;
-    if (!sameCoord(ring[0], ring[ring.length - 1])) return null;
-    return ring.length >= 4 ? ring : null;
-  }
-
-  function stitchWaySegments(segments){
-    const unused = segments
-      .filter(seg => Array.isArray(seg) && seg.length >= 2)
-      .map(seg => seg.map(p => [Number(p[0]), Number(p[1])]))
-      .filter(seg => seg.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1])));
-
-    const rings = [];
-
-    while (unused.length) {
-      let ring = unused.shift();
-      let changed = true;
-
-      while (changed && ring.length) {
-        changed = false;
-        const first = ring[0];
-        const last = ring[ring.length - 1];
-
-        if (sameCoord(first, last)) break;
-
-        for (let i = 0; i < unused.length; i++) {
-          const seg = unused[i];
-          const segFirst = seg[0];
-          const segLast = seg[seg.length - 1];
-
-          if (sameCoord(last, segFirst)) {
-            ring = ring.concat(seg.slice(1));
-          } else if (sameCoord(last, segLast)) {
-            ring = ring.concat(seg.slice(0, -1).reverse());
-          } else if (sameCoord(first, segLast)) {
-            ring = seg.slice(0, -1).concat(ring);
-          } else if (sameCoord(first, segFirst)) {
-            ring = seg.slice(1).reverse().concat(ring);
-          } else {
-            continue;
-          }
-
-          unused.splice(i, 1);
-          changed = true;
-          break;
-        }
-      }
-
-      const closed = closeRing(ring);
-      if (closed) rings.push(closed);
-    }
-
-    return rings;
-  }
-
-  function overpassRelationToGeoJson(relation){
-    const members = Array.isArray(relation?.members) ? relation.members : [];
-    const outerSegments = [];
-
-    members.forEach(member => {
-      if (member.role && member.role !== "outer") return;
-      if (!Array.isArray(member.geometry) || member.geometry.length < 2) return;
-      outerSegments.push(member.geometry.map(p => [Number(p.lon), Number(p.lat)]));
-    });
-
-    const rings = stitchWaySegments(outerSegments);
-    if (!rings.length) return null;
-
-    return {
-      type: "Feature",
-      properties: relation.tags || {},
-      geometry: {
-        type: "MultiPolygon",
-        coordinates: rings.map(ring => [ring])
-      }
-    };
-  }
-
-  function normalizeBoundaryObject(raw){
-    if (!raw || typeof raw !== "object") return null;
-
-    if (raw.type === "Polygon" || raw.type === "MultiPolygon") {
-      return {
-        type: "Feature",
-        properties: {},
-        geometry: raw
-      };
-    }
-
-    if (raw.type === "Feature" || raw.type === "FeatureCollection") return raw;
-
-    if (raw.type === "relation" && Array.isArray(raw.members)) {
-      return overpassRelationToGeoJson(raw);
-    }
-
-    if (Array.isArray(raw.elements)) {
-      const relation = raw.elements.find(e => e?.type === "relation" && Array.isArray(e.members));
-      if (relation) return overpassRelationToGeoJson(relation);
-    }
-
-    return null;
-  }
-
-  function normalizeGeoJson(row){
-    const raw = row.geojson || row.geo_json || row.ranh_gioi || row.boundary || row.polygon;
-    if (raw && typeof raw === "object") {
-      const geo = normalizeBoundaryObject(raw);
-      if (geo) return geo;
-    }
-    if (typeof raw === "string" && raw.trim()) {
-      try {
-        const geo = normalizeBoundaryObject(JSON.parse(raw));
-        if (geo) return geo;
-      } catch {}
-    }
-
-    const geometry = row.geometry || row.toa_do || row.coordinates;
-    if (Array.isArray(geometry) && geometry.length) {
-      if (geometry[0] && typeof geometry[0] === "object" && "lat" in geometry[0] && "lon" in geometry[0]) {
-        return {
-          type: "Feature",
-          properties: {},
-          geometry: {
-            type: "Polygon",
-            coordinates: [geometry.map(p => [Number(p.lon), Number(p.lat)])]
-          }
-        };
-      }
-
-      return {
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "Polygon",
-          coordinates: geometry
-        }
-      };
-    }
-
-    return null;
-  }
-
-  async function fetchWardBoundaries(){
-    const pageSize = 1000;
-    let from = 0;
-    let allRows = [];
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("dm_phuong_xa_vn")
-        .select("*")
-        .ilike("tinh_tp", "%Hải Phòng%")
-        .range(from, from + pageSize - 1);
-
-      if (error) {
-        console.warn("Không tải được ranh giới phường:", error.message);
-        return [];
-      }
-
-      if (!data || data.length === 0) break;
-      allRows = allRows.concat(data);
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return allRows;
-  }
-
-  function drawWardBoundaries(rows){
-    rows.forEach(row => {
-      const label = getBoundaryWardLabel(row);
-      const key = normalizeText(label);
-      const geojson = normalizeGeoJson(row);
-      if (!key || !geojson) {
-        console.warn("Bỏ qua ranh giới chưa khép kín:", label || row);
-        return;
-      }
-
-      const color = getWardBoundaryColor(label);
-      const layer = L.geoJSON(geojson, {
-        pane: "wardBoundaryPane",
-        style: {
-          color,
-          weight: 2.5,
-          opacity: 0.95,
-          fillColor: color,
-          fillOpacity: 0.24,
-          dashArray: null
-        }
-      }).bindPopup(`<b>${esc(label)}</b>`);
-
-      layer._wardColor = color;
-      layer.addTo(boundaryLayer);
-
-      try {
-        const center = layer.getBounds().getCenter();
-        L.marker(center, {
-          interactive: false,
-          icon: L.divIcon({
-            html: `<div class="ward-boundary-label" style="border-color:${color};color:${color}">${esc(label.replace(/\s+-\s+.*$/, ""))}</div>`,
-            className: "",
-            iconSize: null
-          })
-        }).addTo(layer);
-      } catch {}
-
-      wardBoundaryByKey.set(key, layer);
-      wardBoundaryLabelByKey.set(key, label);
-    });
   }
 
   function isBought(v){
@@ -691,8 +421,6 @@
 
   const data = await fetchAllRows();
   const checkinHistory = await fetchAllCheckinRows();
-  const wardBoundaries = await fetchWardBoundaries();
-  drawWardBoundaries(wardBoundaries);
   const tongCheckinTheoKH = new Map();
 
   checkinHistory.forEach(r => {
@@ -1007,11 +735,6 @@
   });
 
   const wardMap = new Map();
-  wardBoundaryLabelByKey.forEach((label, key) => {
-    if (!key || !label) return;
-    if (!wardMap.has(key)) wardMap.set(key, label);
-  });
-
   points.forEach(p => {
     if (!p.wardKey || !p.wardLabel) return;
     if (!wardMap.has(p.wardKey)) wardMap.set(p.wardKey, p.wardLabel);
@@ -1136,37 +859,8 @@
       }
     });
 
-    const selectedBoundaryLayers = [];
-
-    wardBoundaryByKey.forEach((layer, key) => {
-      const selected = selectedWardKeys.size && selectedWardKeys.has(key);
-      const visible = !selectedWardKeys.size || selected;
-      const color = layer._wardColor || getWardBoundaryColor(key);
-
-      if (visible) {
-        if (!map.hasLayer(layer)) layer.addTo(boundaryLayer);
-        layer.setStyle({
-          color,
-          weight: selected ? 5 : 2.5,
-          opacity: 0.95,
-          fillColor: color,
-          fillOpacity: selected ? 0.42 : 0.24,
-          dashArray: null
-        });
-        if (selected) layer.bringToFront();
-        if (selected) selectedBoundaryLayers.push(layer);
-      } else if (map.hasLayer(layer)) {
-        boundaryLayer.removeLayer(layer);
-      }
-    });
-
     const remain = points.filter(p => map.hasLayer(p.marker));
-    if (selectedBoundaryLayers.length) {
-      try {
-        const grp = L.featureGroup(selectedBoundaryLayers);
-        map.fitBounds(grp.getBounds(), { padding:[60,60] });
-      } catch {}
-    } else if(remain.length === 1){
+    if(remain.length === 1){
       map.setView([remain[0].lat, remain[0].lng], 18);
     }
   }
