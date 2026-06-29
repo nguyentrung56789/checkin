@@ -397,7 +397,7 @@
 
   function closeRing(ring){
     if (ring.length < 3) return null;
-    if (!sameCoord(ring[0], ring[ring.length - 1])) ring.push([...ring[0]]);
+    if (!sameCoord(ring[0], ring[ring.length - 1])) return null;
     return ring.length >= 4 ? ring : null;
   }
 
@@ -568,7 +568,10 @@
       const label = getBoundaryWardLabel(row);
       const key = normalizeText(label);
       const geojson = normalizeGeoJson(row);
-      if (!key || !geojson) return;
+      if (!key || !geojson) {
+        console.warn("Bỏ qua ranh giới chưa khép kín:", label || row);
+        return;
+      }
 
       const color = getWardBoundaryColor(label);
       const layer = L.geoJSON(geojson, {
