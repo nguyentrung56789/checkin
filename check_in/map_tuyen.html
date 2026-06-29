@@ -387,11 +387,128 @@
     return city;
   }
 
+  function coordKey(point){
+    return `${Number(point[0]).toFixed(7)},${Number(point[1]).toFixed(7)}`;
+  }
+
+  function sameCoord(a, b){
+    return coordKey(a) === coordKey(b);
+  }
+
+  function closeRing(ring){
+    if (ring.length < 3) return null;
+    if (!sameCoord(ring[0], ring[ring.length - 1])) ring.push([...ring[0]]);
+    return ring.length >= 4 ? ring : null;
+  }
+
+  function stitchWaySegments(segments){
+    const unused = segments
+      .filter(seg => Array.isArray(seg) && seg.length >= 2)
+      .map(seg => seg.map(p => [Number(p[0]), Number(p[1])]))
+      .filter(seg => seg.every(p => Number.isFinite(p[0]) && Number.isFinite(p[1])));
+
+    const rings = [];
+
+    while (unused.length) {
+      let ring = unused.shift();
+      let changed = true;
+
+      while (changed && ring.length) {
+        changed = false;
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+
+        if (sameCoord(first, last)) break;
+
+        for (let i = 0; i < unused.length; i++) {
+          const seg = unused[i];
+          const segFirst = seg[0];
+          const segLast = seg[seg.length - 1];
+
+          if (sameCoord(last, segFirst)) {
+            ring = ring.concat(seg.slice(1));
+          } else if (sameCoord(last, segLast)) {
+            ring = ring.concat(seg.slice(0, -1).reverse());
+          } else if (sameCoord(first, segLast)) {
+            ring = seg.slice(0, -1).concat(ring);
+          } else if (sameCoord(first, segFirst)) {
+            ring = seg.slice(1).reverse().concat(ring);
+          } else {
+            continue;
+          }
+
+          unused.splice(i, 1);
+          changed = true;
+          break;
+        }
+      }
+
+      const closed = closeRing(ring);
+      if (closed) rings.push(closed);
+    }
+
+    return rings;
+  }
+
+  function overpassRelationToGeoJson(relation){
+    const members = Array.isArray(relation?.members) ? relation.members : [];
+    const outerSegments = [];
+
+    members.forEach(member => {
+      if (member.role && member.role !== "outer") return;
+      if (!Array.isArray(member.geometry) || member.geometry.length < 2) return;
+      outerSegments.push(member.geometry.map(p => [Number(p.lon), Number(p.lat)]));
+    });
+
+    const rings = stitchWaySegments(outerSegments);
+    if (!rings.length) return null;
+
+    return {
+      type: "Feature",
+      properties: relation.tags || {},
+      geometry: {
+        type: "MultiPolygon",
+        coordinates: rings.map(ring => [ring])
+      }
+    };
+  }
+
+  function normalizeBoundaryObject(raw){
+    if (!raw || typeof raw !== "object") return null;
+
+    if (raw.type === "relation" && Array.isArray(raw.members)) {
+      return overpassRelationToGeoJson(raw);
+    }
+
+    if (Array.isArray(raw.elements)) {
+      const relation = raw.elements.find(e => e?.type === "relation" && Array.isArray(e.members));
+      if (relation) return overpassRelationToGeoJson(relation);
+    }
+
+    if (raw.type === "Feature" || raw.type === "FeatureCollection") return raw;
+
+    if (raw.type === "Polygon" || raw.type === "MultiPolygon") {
+      return {
+        type: "Feature",
+        properties: {},
+        geometry: raw
+      };
+    }
+
+    return null;
+  }
+
   function normalizeGeoJson(row){
     const raw = row.geojson || row.geo_json || row.ranh_gioi || row.boundary || row.polygon;
-    if (raw && typeof raw === "object") return raw;
+    if (raw && typeof raw === "object") {
+      const geo = normalizeBoundaryObject(raw);
+      if (geo) return geo;
+    }
     if (typeof raw === "string" && raw.trim()) {
-      try { return JSON.parse(raw); } catch {}
+      try {
+        const geo = normalizeBoundaryObject(JSON.parse(raw));
+        if (geo) return geo;
+      } catch {}
     }
 
     const geometry = row.geometry || row.toa_do || row.coordinates;
