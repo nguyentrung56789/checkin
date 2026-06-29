@@ -315,6 +315,7 @@
 
   const boundaryLayer = L.layerGroup().addTo(map);
   const wardBoundaryByKey = new Map();
+  const wardBoundaryLabelByKey = new Map();
   const wardColors = [
     "#ef4444", "#f97316", "#f59e0b", "#eab308",
     "#84cc16", "#22c55e", "#14b8a6", "#06b6d4",
@@ -476,6 +477,16 @@
   function normalizeBoundaryObject(raw){
     if (!raw || typeof raw !== "object") return null;
 
+    if (raw.type === "Polygon" || raw.type === "MultiPolygon") {
+      return {
+        type: "Feature",
+        properties: {},
+        geometry: raw
+      };
+    }
+
+    if (raw.type === "Feature" || raw.type === "FeatureCollection") return raw;
+
     if (raw.type === "relation" && Array.isArray(raw.members)) {
       return overpassRelationToGeoJson(raw);
     }
@@ -483,16 +494,6 @@
     if (Array.isArray(raw.elements)) {
       const relation = raw.elements.find(e => e?.type === "relation" && Array.isArray(e.members));
       if (relation) return overpassRelationToGeoJson(relation);
-    }
-
-    if (raw.type === "Feature" || raw.type === "FeatureCollection") return raw;
-
-    if (raw.type === "Polygon" || raw.type === "MultiPolygon") {
-      return {
-        type: "Feature",
-        properties: {},
-        geometry: raw
-      };
     }
 
     return null;
@@ -602,6 +603,7 @@
       } catch {}
 
       wardBoundaryByKey.set(key, layer);
+      wardBoundaryLabelByKey.set(key, label);
     });
   }
 
@@ -1005,6 +1007,11 @@
   });
 
   const wardMap = new Map();
+  wardBoundaryLabelByKey.forEach((label, key) => {
+    if (!key || !label) return;
+    if (!wardMap.has(key)) wardMap.set(key, label);
+  });
+
   points.forEach(p => {
     if (!p.wardKey || !p.wardLabel) return;
     if (!wardMap.has(p.wardKey)) wardMap.set(p.wardKey, p.wardLabel);
@@ -1129,6 +1136,8 @@
       }
     });
 
+    const selectedBoundaryLayers = [];
+
     wardBoundaryByKey.forEach((layer, key) => {
       const selected = selectedWardKeys.size && selectedWardKeys.has(key);
       const visible = !selectedWardKeys.size || selected;
@@ -1145,13 +1154,19 @@
           dashArray: null
         });
         if (selected) layer.bringToFront();
+        if (selected) selectedBoundaryLayers.push(layer);
       } else if (map.hasLayer(layer)) {
         boundaryLayer.removeLayer(layer);
       }
     });
 
     const remain = points.filter(p => map.hasLayer(p.marker));
-    if(remain.length === 1){
+    if (selectedBoundaryLayers.length) {
+      try {
+        const grp = L.featureGroup(selectedBoundaryLayers);
+        map.fitBounds(grp.getBounds(), { padding:[60,60] });
+      } catch {}
+    } else if(remain.length === 1){
       map.setView([remain[0].lat, remain[0].lng], 18);
     }
   }
