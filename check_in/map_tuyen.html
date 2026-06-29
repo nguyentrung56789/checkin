@@ -85,6 +85,17 @@
     .mk-red{ background:#ef4444; }
     .mk-orange{ background:#f59e0b; }
     .mk-purple{ background:#8b5cf6; }
+    .ward-boundary-label{
+      padding:3px 7px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.92);
+      border:1px solid rgba(17,24,39,0.14);
+      color:#111827;
+      font-size:12px;
+      font-weight:700;
+      white-space:nowrap;
+      box-shadow:0 4px 12px rgba(0,0,0,0.16);
+    }
     .search-row{
       display:flex;
       gap:8px;
@@ -298,6 +309,14 @@
     maxZoom:19
   }).addTo(map);
 
+  const boundaryLayer = L.layerGroup().addTo(map);
+  const wardBoundaryByKey = new Map();
+  const wardColors = [
+    "#ef4444", "#f97316", "#f59e0b", "#22c55e",
+    "#06b6d4", "#3b82f6", "#8b5cf6", "#ec4899",
+    "#14b8a6", "#84cc16", "#a855f7", "#0ea5e9"
+  ];
+
   function esc(v){
     return String(v ?? "").replace(/[&<>"']/g, c => ({
       "&":"&amp;",
@@ -328,6 +347,21 @@
       .replace(/\s+/g, " ");
   }
 
+  function hashText(text){
+    const s = normalizeText(text);
+    let h = 0;
+    for (let i = 0; i < s.length; i++) {
+      h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    }
+    return Math.abs(h);
+  }
+
+  function getWardColor(label, savedColor){
+    const color = String(savedColor || "").trim();
+    if (/^#[0-9a-f]{6}$/i.test(color)) return color;
+    return wardColors[hashText(label) % wardColors.length];
+  }
+
   function getWardCityLabel(row){
     const ward = String(row.phuong_xa || "").trim();
     const city = String(row.thanh_pho || "").trim();
@@ -335,6 +369,114 @@
     if (ward) return ward;
     if (city) return city;
     return "";
+  }
+
+  function getBoundaryWardLabel(row){
+    const name = String(row.ten_phuong || row.name || row.phuong_xa || "").trim();
+    const type = String(row.loai || "").trim();
+    const city = String(row.tinh_tp || row.thanh_pho || row.city || "").trim();
+    const ward = type && name && !new RegExp(`^${type}\\s`, "i").test(name)
+      ? `${type} ${name}`
+      : name;
+
+    if (ward && city) return `${ward} - ${city}`;
+    if (ward) return ward;
+    return city;
+  }
+
+  function normalizeGeoJson(row){
+    const raw = row.geojson || row.geo_json || row.ranh_gioi || row.boundary || row.polygon;
+    if (raw && typeof raw === "object") return raw;
+    if (typeof raw === "string" && raw.trim()) {
+      try { return JSON.parse(raw); } catch {}
+    }
+
+    const geometry = row.geometry || row.toa_do || row.coordinates;
+    if (Array.isArray(geometry) && geometry.length) {
+      if (geometry[0] && typeof geometry[0] === "object" && "lat" in geometry[0] && "lon" in geometry[0]) {
+        return {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [geometry.map(p => [Number(p.lon), Number(p.lat)])]
+          }
+        };
+      }
+
+      return {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "Polygon",
+          coordinates: geometry
+        }
+      };
+    }
+
+    return null;
+  }
+
+  async function fetchWardBoundaries(){
+    const pageSize = 1000;
+    let from = 0;
+    let allRows = [];
+
+    while (true) {
+      const { data, error } = await supabase
+        .from("dm_phuong_xa_vn")
+        .select("*")
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.warn("Không tải được ranh giới phường:", error.message);
+        return [];
+      }
+
+      if (!data || data.length === 0) break;
+      allRows = allRows.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return allRows;
+  }
+
+  function drawWardBoundaries(rows){
+    rows.forEach(row => {
+      const label = getBoundaryWardLabel(row);
+      const key = normalizeText(label);
+      const geojson = normalizeGeoJson(row);
+      if (!key || !geojson) return;
+
+      const color = getWardColor(label, row.mau_ranh_gioi || row.mau_vien || row.color);
+      const layer = L.geoJSON(geojson, {
+        style: {
+          color,
+          weight: 2,
+          opacity: 0.95,
+          fillColor: color,
+          fillOpacity: 0.06,
+          dashArray: "6 4"
+        }
+      }).bindPopup(`<b>${esc(label)}</b>`);
+
+      layer.addTo(boundaryLayer);
+
+      try {
+        const center = layer.getBounds().getCenter();
+        L.marker(center, {
+          interactive: false,
+          icon: L.divIcon({
+            html: `<div class="ward-boundary-label" style="border-color:${color};color:${color}">${esc(label.replace(/\s+-\s+.*$/, ""))}</div>`,
+            className: "",
+            iconSize: null
+          })
+        }).addTo(layer);
+      } catch {}
+
+      wardBoundaryByKey.set(key, layer);
+    });
   }
 
   function isBought(v){
@@ -421,6 +563,8 @@
 
   const data = await fetchAllRows();
   const checkinHistory = await fetchAllCheckinRows();
+  const wardBoundaries = await fetchWardBoundaries();
+  drawWardBoundaries(wardBoundaries);
   const tongCheckinTheoKH = new Map();
 
   checkinHistory.forEach(r => {
@@ -856,6 +1000,23 @@
         if(!map.hasLayer(p.marker)) p.marker.addTo(map);
       }else{
         if(map.hasLayer(p.marker)) map.removeLayer(p.marker);
+      }
+    });
+
+    wardBoundaryByKey.forEach((layer, key) => {
+      const selected = selectedWardKeys.size && selectedWardKeys.has(key);
+      const visible = !selectedWardKeys.size || selected;
+
+      if (visible) {
+        if (!map.hasLayer(layer)) layer.addTo(boundaryLayer);
+        layer.setStyle({
+          weight: selected ? 5 : 2,
+          fillOpacity: selected ? 0.14 : 0.06,
+          dashArray: selected ? null : "6 4"
+        });
+        if (selected) layer.bringToFront();
+      } else if (map.hasLayer(layer)) {
+        boundaryLayer.removeLayer(layer);
       }
     });
 
