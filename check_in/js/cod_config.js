@@ -3,7 +3,7 @@
 // 1) Khai báo CƠ SỞ dùng chung (cùng URL + KEY)
 window.COD_BASE = {
 "url": "https://cywtgdtsxajczljspwxe.supabase.co",
-  "key": "sb_publishable_7JQgLYYV4lInX4HLl7JSNw_6Ou9ghPZ",
+  "key": "sb_secret_HSjF3Evyx3VTM1gHMZniOQ_2GRhXbNH",
 };
 
 // 2) Khai báo theo app — CHỈ KHÁC table
