@@ -397,24 +397,12 @@ async function getSupabaseLib(){
 
   const closeModal = () => $('#modalWrap').style.display = 'none';
 
-async function makeClient() {
-  if (typeof window.getConfig !== 'function') {
-    throw new Error('Không tải được /js/cod_config.js');
-  }
+async function makeClient(){
+  const url  = getConfig('url');
+  const anon = getConfig('anon');
+  const lib  = await getSupabaseLib();
 
-  const config = window.getConfig('checkin_khach_hang');
-
-  if (!config.url) {
-    throw new Error('Thiếu Supabase URL');
-  }
-
-  if (!config.key) {
-    throw new Error('Thiếu Supabase publishable key');
-  }
-
-  const lib = await getSupabaseLib();
-
-  return lib.createClient(config.url, config.key, {
+  return lib.createClient(url, anon, {
     auth: {
       persistSession: false
     }
