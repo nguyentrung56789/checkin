@@ -284,11 +284,32 @@
     throw new Error("ma_nv mismatch");
   }
 
+  // Chờ internal_key.js nạp xong cấu hình từ /api/getConfig
+  if (!window.configReady) {
+    throw new Error("Không tìm thấy configReady từ internal_key.js");
+  }
+
+  await window.configReady;
+
+  const supabaseUrl = window.getConfig("url");
+  const supabaseKey = window.getConfig("role") || window.getConfig("anon");
+  const internalKey = typeof window.getInternalKey === "function"
+    ? window.getInternalKey()
+    : "";
+
+  if (!supabaseUrl) {
+    throw new Error("Thiếu SUPABASE_URL từ /api/getConfig");
+  }
+
+  if (!supabaseKey) {
+    throw new Error("Thiếu SUPABASE_ROLE hoặc SUPABASE_ANON_KEY từ /api/getConfig");
+  }
+
   const supabase = window.supabase.createClient(
-    window.getConfig("url"),
-    window.getConfig("role") || window.getConfig("anon"),
+    supabaseUrl,
+    supabaseKey,
     {
-      global:{ headers:{ "x-internal-key": window.getInternalKey() } }
+      global:{ headers:{ "x-internal-key": internalKey } }
     }
   );
 
