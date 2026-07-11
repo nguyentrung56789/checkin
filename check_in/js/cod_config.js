@@ -10,7 +10,8 @@ window.COD_BASE = {
 window.COD_CONFIGS = {
   index: { table: "kv_nhan_vien" },   // index.html (login/menu)
   cod:   { table: "don_hang_kiot_cod" },   // Quan_ly_COD.html
-  check: { table: "don_hang" }        // don_hang.html
+  check: { table: "don_hang" } ,       // don_hang.html
+  checkin_khach_hang: { table: "nv_checkin_khach_hang" }
 };
 
 // 3) Helper: lấy config cuối cùng cho 1 app
