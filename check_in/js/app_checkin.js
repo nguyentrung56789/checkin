@@ -1,634 +1,259 @@
 /* ================== CONFIG ================== */
 const TARGET_W = 900, TARGET_H = 1600;
 
-/* ===== KẾT NỐI CONFIG.JS =====
-   Luồng:
-   Environment Variables
-   -> internal_key.js
-   -> config.js
-   -> app_checkin.js
-
-   app_checkin.js chỉ đọc cấu hình qua:
-   - window.configReady
-   - window.getConfig(...)
-================================ */
-
-const SHEET_URL_PARAM =
-  new URLSearchParams(location.search).get('sheet');
-
-let SHEET_URL = '';
-
-window.appCheckinConfigReady = (async () => {
-  if (!window.configReady) {
-    throw new Error(
-      'Không tìm thấy configReady. Kiểm tra thứ tự tải internal_key.js, config.js và app_checkin.js.'
-    );
-  }
-
-  await window.configReady;
-
-  if (typeof window.getConfig !== 'function') {
-    throw new Error(
-      'Không tìm thấy getConfig() từ config.js.'
-    );
-  }
-
-  /*
-   * Ưu tiên:
-   * 1. ?sheet= trên URL
-   * 2. csv_url từ config.js
-   */
-  SHEET_URL =
-    SHEET_URL_PARAM ||
-    window.getConfig('csv_url') ||
-    '';
-
-  return true;
-})();
-
+/* ===== SHEET so sánh (<=20m) khi bật cam ===== */
+const SHEET_URL = new URLSearchParams(location.search).get('sheet')
+  || 'https://docs.google.com/spreadsheets/d/.../pub?output=csv'; // TODO: thay link CSV của bạn
 const SHEET_TTL_MS = 5 * 60 * 1000;
 const NEAR_RADIUS_M = 20;
 let SHEET_POINTS = [];
 const SESSION_IMG_KEY = 'CHECKIN_IMAGE_PAYLOAD';
 
 /* ===== Local cache helpers ===== */
-const lsGet = k => {
-  try {
-    return JSON.parse(localStorage.getItem(k) || 'null');
-  } catch {
-    return null;
-  }
-};
+const lsGet = k => { try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null} };
+const lsSet = (k,v) => localStorage.setItem(k, JSON.stringify(v));
 
-const lsSet = (k, v) =>
-  localStorage.setItem(k, JSON.stringify(v));
-
-function parseCsv(text) {
-  const lines = text
-    .split(/\r?\n/)
-    .filter(Boolean);
-
-  if (!lines.length) return [];
-
-  const headers = lines[0]
-    .split(',')
-    .map(s => s.trim().toLowerCase());
-
+function parseCsv(text){
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if(!lines.length) return [];
+  const headers = lines[0].split(',').map(s=>s.trim().toLowerCase());
   const id = n => headers.indexOf(n);
-
-  const pick = (...c) => {
-    for (const x of c) {
-      const i = id(x);
-      if (i >= 0) return i;
-    }
-    return -1;
-  };
-
+  const pick = (...c)=>{ for(const x of c){ const i=id(x); if(i>=0) return i; } return -1; };
   const idx = {
-    lat: pick('lat', 'latitude', 'vi_do', 'vido'),
-    lng: pick('lng', 'lon', 'longitude', 'kinh_do', 'kinhdo'),
-    name: pick('name', 'ten', 'tên'),
-    ma_kh: pick('ma_kh', 'makh', 'ma', 'mã'),
-    ma_hd: pick('ma_hd', 'mahd')
+    lat:   pick('lat','latitude','vi_do','vido'),
+    lng:   pick('lng','lon','longitude','kinh_do','kinhdo'),
+    name:  pick('name','ten','tên'),
+    ma_kh: pick('ma_kh','makh','ma','mã'),
+    ma_hd: pick('ma_hd','mahd')
   };
-
-  const out = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const cols = lines[i]
-      .split(',')
-      .map(s => s.trim());
-
-    const lat = Number(cols[idx.lat]);
-    const lng = Number(cols[idx.lng]);
-
-    if (!isFinite(lat) || !isFinite(lng)) {
-      continue;
-    }
-
+  const out=[];
+  for(let i=1;i<lines.length;i++){
+    const cols = lines[i].split(',').map(s=>s.trim());
+    const lat = Number(cols[idx.lat]), lng = Number(cols[idx.lng]);
+    if(!isFinite(lat)||!isFinite(lng)) continue;
     out.push({
-      lat,
-      lng,
-      name: idx.name >= 0 ? cols[idx.name] : '',
-      ma_kh: idx.ma_kh >= 0 ? cols[idx.ma_kh] : '',
-      ma_hd: idx.ma_hd >= 0 ? cols[idx.ma_hd] : ''
+      lat, lng,
+      name:  idx.name >=0 ? cols[idx.name]  : '',
+      ma_kh: idx.ma_kh>=0 ? cols[idx.ma_kh] : '',
+      ma_hd: idx.ma_hd>=0 ? cols[idx.ma_hd] : ''
     });
   }
-
   return out;
 }
 
-async function ensureSheetPoints() {
-  await window.appCheckinConfigReady;
-
-  if (!SHEET_URL) {
-    throw new Error('Thiếu csv_url trong config.js');
-  }
-
-  if (SHEET_POINTS.length) {
-    return SHEET_POINTS;
-  }
-
+async function ensureSheetPoints(){
+  if (SHEET_POINTS.length) return SHEET_POINTS;
   const cached = lsGet('SHEET_POINTS_CACHE');
   const ts = lsGet('SHEET_POINTS_TS');
-
-  if (
-    cached &&
-    ts &&
-    Date.now() - ts < SHEET_TTL_MS
-  ) {
-    SHEET_POINTS = cached;
-    return SHEET_POINTS;
+  if (cached && ts && (Date.now()-ts < SHEET_TTL_MS)){
+    SHEET_POINTS = cached; return SHEET_POINTS;
   }
-
-  const res = await fetch(SHEET_URL, {
-    cache: 'no-store'
-  });
-
-  if (!res.ok) {
-    throw new Error(
-      `Không tải được Sheet. HTTP ${res.status}`
-    );
-  }
-
-  const ct = (
-    res.headers.get('content-type') || ''
-  ).toLowerCase();
-
-  let data = [];
-
-  if (ct.includes('application/json')) {
+  const res = await fetch(SHEET_URL, { cache:'no-store' });
+  const ct  = (res.headers.get('content-type')||'').toLowerCase();
+  let data=[];
+  if (ct.includes('application/json')){
     const j = await res.json();
-
-    const arr = Array.isArray(j)
-      ? j
-      : Array.isArray(j.data)
-        ? j.data
-        : [];
-
-    data = arr
-      .map(r => ({
-        lat: Number(r.lat),
-        lng: Number(r.lng),
-        name: r.name || r.ten || '',
-        ma_kh: r.ma_kh || '',
-        ma_hd: r.ma_hd || r.mahd || ''
-      }))
-      .filter(
-        x =>
-          isFinite(x.lat) &&
-          isFinite(x.lng)
-      );
-  } else {
+    const arr = Array.isArray(j) ? j : (Array.isArray(j.data) ? j.data : []);
+    data = arr.map(r=>({
+      lat:Number(r.lat), lng:Number(r.lng),
+      name:r.name||r.ten||'', ma_kh:r.ma_kh||'', ma_hd:r.ma_hd||r.mahd||''
+    })).filter(x=>isFinite(x.lat)&&isFinite(x.lng));
+  }else{
     const txt = await res.text();
     data = parseCsv(txt);
   }
-
   SHEET_POINTS = data;
-
   lsSet('SHEET_POINTS_CACHE', data);
   lsSet('SHEET_POINTS_TS', Date.now());
-
   return SHEET_POINTS;
 }
 
-function distanceMeters(a, b) {
-  const toRad = d => d * Math.PI / 180;
-  const R = 6371000;
-
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-
-  const aa =
-    s1 * s1 +
-    Math.cos(toRad(a.lat)) *
-    Math.cos(toRad(b.lat)) *
-    s2 * s2;
-
-  return 2 * R * Math.atan2(
-    Math.sqrt(aa),
-    Math.sqrt(1 - aa)
-  );
+function distanceMeters(a,b){
+  const toRad=d=>d*Math.PI/180, R=6371000;
+  const dLat=toRad(b.lat-a.lat), dLng=toRad(b.lng-a.lng);
+  const s1=Math.sin(dLat/2), s2=Math.sin(dLng/2);
+  const aa=s1*s1 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*s2*s2;
+  return 2*R*Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
 }
 
-function findNearbyInArray(
-  lat,
-  lng,
-  arr,
-  radiusM = NEAR_RADIUS_M
-) {
-  let best = null;
-  let bestD = Infinity;
-
-  for (const it of arr) {
-    const d = distanceMeters(
-      { lat, lng },
-      { lat: it.lat, lng: it.lng }
-    );
-
-    if (d <= radiusM && d < bestD) {
-      best = {
-        ...it,
-        dist: Math.round(d)
-      };
-
-      bestD = d;
-    }
+function findNearbyInArray(lat,lng,arr,radiusM=NEAR_RADIUS_M){
+  let best=null, bestD=Infinity;
+  for(const it of arr){
+    const d = distanceMeters({lat,lng},{lat:it.lat,lng:it.lng});
+    if(d<=radiusM && d<bestD){ best={...it, dist:Math.round(d)}; bestD=d; }
   }
-
   return best;
 }
 
-async function afterCameraStartedCheck20m() {
-  try {
+async function afterCameraStartedCheck20m(){
+  try{
     await ensureSheetPoints();
-
     const g = await getGPSOnce();
-
-    if (
-      g &&
-      (g.acc == null || g.acc <= 60)
-    ) {
-      const hit = findNearbyInArray(
-        g.lat,
-        g.lng,
-        SHEET_POINTS,
-        NEAR_RADIUS_M
-      );
-
-      if (hit) {
-        const label =
-          hit.name ||
-          hit.ma_kh ||
-          hit.ma_hd ||
-          'Vị trí';
-
-        toast(
-          `✅ ${label} đã được check-in (${hit.dist}m)`,
-          'ok',
-          3500
-        );
+    if (g && (g.acc==null || g.acc<=60)){
+      const hit = findNearbyInArray(g.lat, g.lng, SHEET_POINTS, NEAR_RADIUS_M);
+      if (hit){
+        const label = hit.name || hit.ma_kh || hit.ma_hd || 'Vị trí';
+        toast(`✅ ${label} đã được check-in (${hit.dist}m)`, 'ok', 3500);
       }
     }
-  } catch {}
+  }catch{}
 }
 
 /* ================== DOM & PARAMS ================== */
 const $ = id => document.getElementById(id);
 
-const video = $('video');
-const canvas = $('canvas');
-const btnStart = $('btnStart');
-const btnShot = $('btnShot');
-const btnTorch = $('btnTorch');
-const btnSound = $('btnSound');
+const video     = $('video');
+const canvas    = $('canvas');
+const btnStart  = $('btnStart');
+const btnShot   = $('btnShot');
+const btnTorch  = $('btnTorch');
+const btnSound  = $('btnSound');
 const btnZoomIn = $('btnZoomIn');
-const btnZoomOut = $('btnZoomOut');
-const btnMenu = $('btnMenu');
+const btnZoomOut= $('btnZoomOut');
+const btnMenu   = $('btnMenu'); // nút Menu mới
 
-const toastEl = $('toast');
-const bar = $('bar');
-const tagInfo = $('tagInfo');
-const stage =
-  $('stage') ||
-  document.querySelector('.stage');
+const toastEl   = $('toast');
+const bar       = $('bar');
+const tagInfo   = $('tagInfo');
+const stage     = $('stage') || document.querySelector('.stage');
 
 if (video) {
   video.style.objectFit = 'cover';
-  video.setAttribute('playsinline', '');
+  video.setAttribute('playsinline','');
   video.muted = true;
 }
 
-const qp = new URLSearchParams(location.search);
-
+const qp   = new URLSearchParams(location.search);
 const MA_KH = qp.get('ma_kh') || '';
 const MA_HD = qp.get('ma_hd') || '';
 
-function getLoggedNV() {
+function getLoggedNV(){
   const nv = lsGet('nv');
-
-  if (nv && nv.ma_nv) {
-    return nv;
-  }
+  if (nv && nv.ma_nv) return nv;
 
   const ctx = (() => {
-    try {
-      return JSON.parse(
-        sessionStorage.getItem('nv_ctx') ||
-        'null'
-      );
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(sessionStorage.getItem('nv_ctx') || 'null'); }
+    catch { return null; }
   })();
-
-  if (ctx && ctx.ma_nv) {
-    return ctx;
-  }
+  if (ctx && ctx.ma_nv) return ctx;
 
   return null;
 }
 
 const LOGGED_NV = getLoggedNV();
-
-const MA_NV = (
-  qp.get('ma_nv') || ''
-).trim();
-
-const TEN_NV = (
-  qp.get('ten_nv') ||
-  LOGGED_NV?.ten_nv ||
-  ''
-).trim();
+const MA_NV = (qp.get('ma_nv') || '').trim();
+const TEN_NV = (qp.get('ten_nv') || LOGGED_NV?.ten_nv || '').trim();
 
 if (!MA_NV) {
-  try {
-    alert(
-      'Thiếu mã nhân viên. Vui lòng vào từ Trang chính.'
-    );
-  } catch {}
-
+  try { alert('Thiếu mã nhân viên. Vui lòng vào từ Trang chính.'); } catch {}
   location.replace('./main.html');
   throw new Error('Missing ma_nv');
 }
 
-if (
-  !LOGGED_NV ||
-  !LOGGED_NV.ma_nv ||
-  LOGGED_NV.hoat_dong === false
-) {
-  try {
-    alert('Bạn chưa đăng nhập.');
-  } catch {}
-
+if (!LOGGED_NV || !LOGGED_NV.ma_nv || LOGGED_NV.hoat_dong === false) {
+  try { alert('Bạn chưa đăng nhập.'); } catch {}
   location.replace('./login.html');
   throw new Error('Not logged in');
 }
 
-if (
-  String(LOGGED_NV.ma_nv) !==
-  String(MA_NV)
-) {
-  try {
-    alert(
-      'Mã nhân viên không khớp tài khoản đăng nhập.'
-    );
-  } catch {}
-
+if (String(LOGGED_NV.ma_nv) !== String(MA_NV)) {
+  try { alert('Mã nhân viên không khớp tài khoản đăng nhập.'); } catch {}
   location.replace('./main.html');
   throw new Error('ma_nv mismatch');
 }
 
 if (tagInfo) {
-  tagInfo.textContent = [
-    MA_NV && `NV:${MA_NV}`,
-    MA_KH && `KH:${MA_KH}`,
-    MA_HD && `HD:${MA_HD}`
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  tagInfo.textContent = [MA_NV && `NV:${MA_NV}`, MA_KH && `KH:${MA_KH}`, MA_HD && `HD:${MA_HD}`]
+    .filter(Boolean).join(' · ');
 }
 
-/* ================== AUDIO ================== */
-let audioCtx = null;
-let compressor = null;
-
+/* ================== AUDIO (shutter) ================== */
+let audioCtx = null, compressor = null;
 const SHUTTER_GAIN = 0.9;
 
-async function ensureAudioCtx() {
-  if (!audioCtx) {
-    const AC =
-      window.AudioContext ||
-      window.webkitAudioContext;
-
+async function ensureAudioCtx(){
+  if(!audioCtx){
+    const AC = window.AudioContext || window.webkitAudioContext;
     audioCtx = new AC();
-
-    compressor =
-      audioCtx.createDynamicsCompressor();
-
-    compressor.threshold.setValueAtTime(
-      -24,
-      audioCtx.currentTime
-    );
-
-    compressor.knee.setValueAtTime(
-      30,
-      audioCtx.currentTime
-    );
-
-    compressor.ratio.setValueAtTime(
-      12,
-      audioCtx.currentTime
-    );
-
-    compressor.attack.setValueAtTime(
-      0.002,
-      audioCtx.currentTime
-    );
-
-    compressor.release.setValueAtTime(
-      0.1,
-      audioCtx.currentTime
-    );
-
+    compressor = audioCtx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+    compressor.knee.setValueAtTime(30, audioCtx.currentTime);
+    compressor.ratio.setValueAtTime(12, audioCtx.currentTime);
+    compressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
+    compressor.release.setValueAtTime(0.1, audioCtx.currentTime);
     compressor.connect(audioCtx.destination);
   }
-
-  if (audioCtx.state === 'suspended') {
-    await audioCtx.resume();
-  }
+  if(audioCtx.state === 'suspended') await audioCtx.resume();
 }
 
-function noiseBurst(ctx, t0, dur = 0.03) {
-  const len = Math.floor(
-    ctx.sampleRate * dur
-  );
-
-  const buf = ctx.createBuffer(
-    1,
-    len,
-    ctx.sampleRate
-  );
-
+function noiseBurst(ctx, t0, dur=0.03){
+  const len = Math.floor(ctx.sampleRate * dur);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const data = buf.getChannelData(0);
-
-  for (let i = 0; i < len; i++) {
-    data[i] =
-      (Math.random() * 2 - 1) * 0.6;
-  }
-
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-
+  for(let i=0;i<len;i++) data[i] = (Math.random()*2-1) * 0.6;
+  const src = ctx.createBufferSource(); src.buffer = buf;
   const g = ctx.createGain();
-
   g.gain.setValueAtTime(0, t0);
-  g.gain.linearRampToValueAtTime(
-    SHUTTER_GAIN,
-    t0 + 0.005
-  );
-  g.gain.exponentialRampToValueAtTime(
-    0.0008,
-    t0 + dur
-  );
-
-  const lp = ctx.createBiquadFilter();
-
-  lp.type = 'lowpass';
-  lp.frequency.setValueAtTime(4500, t0);
-
-  src.connect(lp);
-  lp.connect(g);
-  g.connect(compressor);
-
-  src.start(t0);
-  src.stop(t0 + dur + 0.01);
+  g.gain.linearRampToValueAtTime(SHUTTER_GAIN, t0 + 0.005);
+  g.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+  const lp = ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.setValueAtTime(4500, t0);
+  src.connect(lp); lp.connect(g); g.connect(compressor);
+  src.start(t0); src.stop(t0 + dur + 0.01);
 }
 
-let soundEnabled =
-  (
-    localStorage.getItem('soundEnabled') ??
-    '1'
-  ) === '1';
+let soundEnabled = (localStorage.getItem('soundEnabled')??'1') === '1';
 
-function renderSoundBtn() {
+function renderSoundBtn(){
   if (!btnSound) return;
-
-  btnSound.classList.toggle(
-    'btn-on',
-    soundEnabled
-  );
-
-  btnSound.textContent =
-    soundEnabled ? '🔊' : '🔇';
-
-  btnSound.title =
-    soundEnabled
-      ? 'Đang bật tiếng (bấm để tắt)'
-      : 'Đang tắt tiếng (bấm để bật)';
+  btnSound.classList.toggle('btn-on', soundEnabled);
+  btnSound.textContent = soundEnabled ? '🔊' : '🔇';
+  btnSound.title = soundEnabled ? 'Đang bật tiếng (bấm để tắt)' : 'Đang tắt tiếng (bấm để bật)';
 }
-
 renderSoundBtn();
 
-if (btnSound) {
-  btnSound.onclick = () => {
-    soundEnabled = !soundEnabled;
+btnSound && (btnSound.onclick = ()=>{ 
+  soundEnabled=!soundEnabled; 
+  localStorage.setItem('soundEnabled', soundEnabled?'1':'0'); 
+  renderSoundBtn(); 
+  toast(soundEnabled?'Đã bật tiếng chụp':'Đã tắt tiếng chụp'); 
+});
 
-    localStorage.setItem(
-      'soundEnabled',
-      soundEnabled ? '1' : '0'
-    );
-
-    renderSoundBtn();
-
-    toast(
-      soundEnabled
-        ? 'Đã bật tiếng chụp'
-        : 'Đã tắt tiếng chụp'
-    );
-  };
-}
-
-async function playShutter() {
-  if (!soundEnabled) return;
-
+async function playShutter(){
+  if(!soundEnabled) return;
   await ensureAudioCtx();
-
-  const ctx = audioCtx;
-  const now = ctx.currentTime;
-
+  const ctx = audioCtx; const now = ctx.currentTime;
   noiseBurst(ctx, now, 0.035);
-
-  const osc1 = ctx.createOscillator();
-  const g1 = ctx.createGain();
-
-  osc1.type = 'square';
-
-  osc1.frequency.setValueAtTime(
-    1400,
-    now
-  );
-
+  const osc1 = ctx.createOscillator(), g1 = ctx.createGain();
+  osc1.type='square'; osc1.frequency.setValueAtTime(1400, now);
   g1.gain.setValueAtTime(0, now);
-
-  g1.gain.linearRampToValueAtTime(
-    SHUTTER_GAIN,
-    now + 0.01
-  );
-
-  g1.gain.exponentialRampToValueAtTime(
-    0.001,
-    now + 0.09
-  );
-
-  osc1.connect(g1);
-  g1.connect(compressor);
-
-  osc1.start(now);
-  osc1.stop(now + 0.1);
-
+  g1.gain.linearRampToValueAtTime(SHUTTER_GAIN, now + 0.01);
+  g1.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+  osc1.connect(g1); g1.connect(compressor); osc1.start(now); osc1.stop(now + 0.1);
   const t2 = now + 0.06;
-
-  const osc2 = ctx.createOscillator();
-  const g2 = ctx.createGain();
-
-  osc2.type = 'square';
-
-  osc2.frequency.setValueAtTime(
-    950,
-    t2
-  );
-
+  const osc2 = ctx.createOscillator(), g2 = ctx.createGain();
+  osc2.type='square'; osc2.frequency.setValueAtTime(950, t2);
   g2.gain.setValueAtTime(0, t2);
-
-  g2.gain.linearRampToValueAtTime(
-    SHUTTER_GAIN * 0.7,
-    t2 + 0.012
-  );
-
-  g2.gain.exponentialRampToValueAtTime(
-    0.001,
-    t2 + 0.08
-  );
-
-  osc2.connect(g2);
-  g2.connect(compressor);
-
-  osc2.start(t2);
-  osc2.stop(t2 + 0.09);
-
-  if (navigator.vibrate) {
-    navigator.vibrate(30);
-  }
+  g2.gain.linearRampToValueAtTime(SHUTTER_GAIN*0.7, t2 + 0.012);
+  g2.gain.exponentialRampToValueAtTime(0.001, t2 + 0.08);
+  osc2.connect(g2); g2.connect(compressor); osc2.start(t2); osc2.stop(t2 + 0.09);
+  if (navigator.vibrate) navigator.vibrate(30);
 }
 
 /* ================== TOAST ================== */
-function toast(
-  t,
-  type = 'info',
-  ms = 2400
-) {
+function toast(t,type='info',ms=2400){
   if (!toastEl) return;
-
-  toastEl.textContent = t;
-  toastEl.style.opacity = '1';
-  toastEl.style.transform =
-    'translate(-50%,10px)';
-
+  toastEl.textContent=t;
+  toastEl.style.opacity='1';
+  toastEl.style.transform='translate(-50%,10px)';
   clearTimeout(toast._t);
-
-  toast._t = setTimeout(() => {
-    toastEl.style.opacity = '0';
-    toastEl.style.transform =
-      'translate(-50%,-120%)';
-  }, ms);
+  toast._t=setTimeout(()=>{
+    toastEl.style.opacity='0';
+    toastEl.style.transform='translate(-50%,-120%)';
+  },ms);
 }
 
-/* ================== GPS ================== */
-function openGeoHelp() {
+/* ================== GPS (CHỈ LẤY KHI BẤM CHỤP) ================== */
+function openGeoHelp(){
   const msg =
 `⚠️ Bạn đã chặn quyền vị trí.
 Cách bật lại nhanh:
@@ -637,232 +262,117 @@ Cách bật lại nhanh:
 • Điện thoại: Settings → Privacy/Location → bật Location; và trong Chrome → Site settings → Location = Allow.
 
 Sau đó bấm lại "Bật camera".`;
-
-  try {
-    alert(msg);
-  } catch {}
+  try{ alert(msg); }catch{}
 }
 
-function getGeoPermStateSafe() {
-  return (
-    navigator.permissions &&
-    navigator.permissions.query
-  )
-    ? navigator.permissions
-        .query({ name: 'geolocation' })
-        .then(p => p.state)
-        .catch(() => null)
+function getGeoPermStateSafe(){
+  return (navigator.permissions && navigator.permissions.query)
+    ? navigator.permissions.query({ name:'geolocation' }).then(p=>p.state).catch(()=>null)
     : Promise.resolve(null);
 }
 
-function getGPSOnce(timeoutMs = 10000) {
-  return new Promise(resolve => {
-    if (!('geolocation' in navigator)) {
-      return resolve(null);
-    }
-
+function getGPSOnce(timeoutMs = 10000){ 
+  return new Promise(resolve=>{
+    if(!('geolocation' in navigator)) return resolve(null);
     navigator.geolocation.getCurrentPosition(
-      p => resolve({
-        lat: p.coords.latitude,
-        lng: p.coords.longitude,
-        acc: p.coords.accuracy
-      }),
-      err => resolve({ err }),
-      {
-        enableHighAccuracy: true,
-        timeout: timeoutMs,
-        maximumAge: 30000
-      }
+      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy}),
+      err=>resolve({err}),
+      { enableHighAccuracy:true, timeout:timeoutMs, maximumAge:30000 }
     );
   });
 }
 
-async function ensureGeoAllowedAndGet() {
-  if (!('geolocation' in navigator)) {
-    toast(
-      'Thiết bị không hỗ trợ vị trí (GPS)',
-      'err',
-      3500
-    );
-
-    try {
-      alert(
-        'Thiết bị không hỗ trợ vị trí (GPS).'
-      );
-    } catch {}
-
+// ✅ đảm bảo: denied => báo + return false
+// ✅ prompt => tự gọi getCurrentPosition để bật popup xin quyền
+// ✅ granted => cố lấy 1 tọa độ hợp lệ (lat != 0)
+async function ensureGeoAllowedAndGet(){
+  if(!('geolocation' in navigator)){
+    toast('Thiết bị không hỗ trợ vị trí (GPS)', 'err', 3500);
+    try{ alert('Thiết bị không hỗ trợ vị trí (GPS).'); }catch{}
     return false;
   }
 
-  const st =
-    await getGeoPermStateSafe();
+  const st = await getGeoPermStateSafe();
 
-  if (st === 'denied') {
-    toast(
-      '⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.',
-      'err',
-      4200
-    );
-
+  if (st === 'denied'){
+    toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
     openGeoHelp();
     return false;
   }
 
+  // st === 'prompt' hoặc null => gọi để bật popup xin quyền
   const r = await getGPSOnce();
 
-  if (r && r.err) {
+  // bị chặn ngay lúc popup
+  if (r && r.err){
     const code = r.err.code;
-
-    if (code === 1) {
-      toast(
-        '⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.',
-        'err',
-        4200
-      );
-
+    if (code === 1){ // PERMISSION_DENIED
+      toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại trong cài đặt trình duyệt.', 'err', 4200);
       openGeoHelp();
       return false;
     }
-
-    toast(
-      '⚠️ Không lấy được GPS. Hãy bật vị trí/GPS và thử lại.',
-      'err',
-      3500
-    );
-
+    toast('⚠️ Không lấy được GPS. Hãy bật vị trí/GPS và thử lại.', 'err', 3500);
     return false;
   }
 
   const lat = r?.lat ?? 0;
   const lng = r?.lng ?? 0;
 
-  if (
-    !lat ||
-    lat === 0 ||
-    !lng ||
-    lng === 0
-  ) {
-    toast(
-      '⚠️ Chưa có vị trí GPS. Hãy bật vị trí rồi thử lại.',
-      'err',
-      3500
-    );
-
-    try {
-      alert(
-        '⚠️ Chưa có vị trí GPS. Hãy bật vị trí/GPS rồi bấm lại "Bật camera".'
-      );
-    } catch {}
-
+  if (!lat || lat === 0 || !lng || lng === 0){
+    toast('⚠️ Chưa có vị trí GPS. Hãy bật vị trí rồi thử lại.', 'err', 3500);
+    try{ alert('⚠️ Chưa có vị trí GPS. Hãy bật vị trí/GPS rồi bấm lại "Bật camera".'); }catch{}
     return false;
   }
 
-  window.__myLatLng = {
-    lat,
-    lng
-  };
-
+  // lưu lại để các bước khác dùng (nếu cần)
+  window.__myLatLng = { lat, lng };
   return true;
 }
 
 const CSS_DIGITAL_ZOOM_MAX = 5;
 
-/* ================== CAMERA ================== */
-let stream = null;
-let videoTrack = null;
-let torchOn = false;
+/* ================== CAMERA, ZOOM, TORCH ================== */
+let stream=null, videoTrack=null, torchOn=false;
+let zoomSupported=false, cssZoomFallback=false;
+let zoomMin=1, zoomMax=1, zoomStep=0.1, zoomVal=1;
 
-let zoomSupported = false;
-let cssZoomFallback = false;
-
-let zoomMin = 1;
-let zoomMax = 1;
-let zoomStep = 0.1;
-let zoomVal = 1;
-
-function stopCam() {
-  if (stream) {
-    try {
-      stream
-        .getTracks()
-        .forEach(t => t.stop());
-    } catch {}
-  }
-
-  stream = null;
-  videoTrack = null;
-
-  if (video) {
-    video.srcObject = null;
-  }
+function stopCam(){
+  if(stream){ try{ stream.getTracks().forEach(t=>t.stop()); }catch{} }
+  stream=null; videoTrack=null;
+  if (video) video.srcObject=null;
 }
 
-async function startCam() {
-  try {
+async function startCam(){
+  try{
     stopCam();
+    stage && stage.classList.remove('ready');
 
-    if (stage) {
-      stage.classList.remove('ready');
-    }
-
-    if (
-      !navigator.mediaDevices ||
-      !navigator.mediaDevices.getUserMedia
-    ) {
-      throw new Error(
-        'Trình duyệt không hỗ trợ camera'
-      );
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Trình duyệt không hỗ trợ camera');
     }
 
     const base = {
       video: {
-        width: {
-          ideal: 1080
-        },
-        height: {
-          ideal: 1920
-        },
-        facingMode: {
-          ideal: 'environment'
-        }
+        width:  { ideal: 1080 },
+        height: { ideal: 1920 },
+        facingMode: { ideal: 'environment' }
       },
       audio: false
     };
 
-    try {
-      stream =
-        await navigator.mediaDevices
-          .getUserMedia(base);
-    } catch (e) {
+    try{
+      stream = await navigator.mediaDevices.getUserMedia(base);
+    }catch(e){
       if (e.name === 'NotAllowedError') {
-        throw new Error(
-          'Bạn đã chặn quyền camera. Vào Cài đặt trình duyệt để bật lại.'
-        );
+        throw new Error('Bạn đã chặn quyền camera. Vào Cài đặt trình duyệt để bật lại.');
       }
-
       if (e.name === 'NotFoundError') {
-        throw new Error(
-          'Không tìm thấy thiết bị camera.'
-        );
+        throw new Error('Không tìm thấy thiết bị camera.');
       }
-
-      if (
-        String(e.message || '')
-          .includes('Device in use')
-      ) {
-        toast(
-          'Camera đang bận — thử lại...',
-          'info',
-          2000
-        );
-
-        await new Promise(
-          r => setTimeout(r, 1000)
-        );
-
-        stream =
-          await navigator.mediaDevices
-            .getUserMedia(base);
+      if (String(e.message || '').includes('Device in use')) {
+        toast('Camera đang bận — thử lại...', 'info', 2000);
+        await new Promise(r => setTimeout(r, 1000));
+        stream = await navigator.mediaDevices.getUserMedia(base);
       } else {
         throw e;
       }
@@ -870,662 +380,304 @@ async function startCam() {
 
     if (video) {
       video.srcObject = stream;
-      video.setAttribute(
-        'playsinline',
-        ''
-      );
+      video.setAttribute('playsinline','');
       video.muted = true;
 
-      await new Promise(r => {
-        video.onloadedmetadata = r;
-      });
+      // Đợi metadata
+      await new Promise(r => { video.onloadedmetadata = r; });
 
+      // BẮT BUỘC phải play() cho mobile
       try {
         await video.play();
       } catch (err) {
-        console.warn(
-          'Không play được video:',
-          err
-        );
+        console.warn('Không play được video:', err);
       }
     }
 
-    videoTrack =
-      stream.getVideoTracks()[0] ||
-      null;
+    videoTrack = stream.getVideoTracks()[0] || null;
 
-    if (stage) {
-      stage.classList.add('ready');
-    }
+    stage && stage.classList.add('ready');
 
-    if (btnShot) {
-      btnShot.disabled = false;
-    }
-
+    if (btnShot) btnShot.disabled = false;
     await initZoom();
+
+    // 👇 luôn dùng mức zoom nhỏ nhất
     await setZoom(zoomMin);
     await tryApplyTorch(false);
 
-    toast(
-      'Đã bật camera. GPS sẽ lấy khi bấm chụp.',
-      'ok'
-    );
-  } catch (e) {
+    toast('Đã bật camera. GPS sẽ lấy khi bấm chụp.','ok');
+
+    // Không gọi Sheet/GPS khi mở camera để trang nhẹ hơn.
+    // GPS chỉ lấy khi bấm chụp ảnh.
+
+  }catch(e){
     console.error(e);
-
-    if (btnShot) {
-      btnShot.disabled = true;
-    }
-
-    if (stage) {
-      stage.classList.remove('ready');
-    }
-
-    toast(
-      'Lỗi camera: ' +
-      (e.message || e),
-      'err',
-      4200
-    );
+    if (btnShot) btnShot.disabled = true;
+    stage && stage.classList.remove('ready');
+    toast('Lỗi camera: ' + (e.message || e), 'err', 4200);
   }
 }
 
-function renderCssZoom() {
+function renderCssZoom(){
   if (!video) return;
-
-  video.style.transformOrigin =
-    'center center';
-
-  video.style.transform =
-    `scale(${zoomVal})`;
+  video.style.transformOrigin = 'center center';
+  video.style.transform = `scale(${zoomVal})`;
 }
 
-async function initZoom() {
+async function initZoom(){
   zoomSupported = false;
   cssZoomFallback = false;
-
   zoomMin = 1;
   zoomMax = 1;
   zoomStep = 0.1;
   zoomVal = 1;
 
-  try {
-    const caps =
-      videoTrack?.getCapabilities?.() ||
-      {};
+  try{
+    const caps = videoTrack?.getCapabilities?.() || {};
+    const hasZoom = caps && typeof caps.zoom === 'object';
 
-    const hasZoom =
-      caps &&
-      typeof caps.zoom === 'object';
-
-    if (
-      hasZoom &&
-      typeof caps.zoom.min === 'number'
-    ) {
+    if (hasZoom && typeof caps.zoom.min === 'number'){
       zoomSupported = true;
-
-      zoomMin = caps.zoom.min;
-      zoomMax =
-        caps.zoom.max ||
-        caps.zoom.min;
-      zoomStep =
-        caps.zoom.step ||
-        0.1;
-      zoomVal = zoomMin;
-
-      await videoTrack.applyConstraints({
-        advanced: [{
-          zoom: zoomVal
-        }]
-      });
+      zoomMin  = caps.zoom.min;
+      zoomMax  = caps.zoom.max || caps.zoom.min;
+      zoomStep = caps.zoom.step || 0.1;
+      zoomVal  = zoomMin;
+      await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
     } else {
       cssZoomFallback = true;
-      zoomMin = 1;
-      zoomMax =
-        CSS_DIGITAL_ZOOM_MAX;
+      zoomMin  = 1;
+      zoomMax  = CSS_DIGITAL_ZOOM_MAX;
       zoomStep = 0.2;
-      zoomVal = 1;
-
+      zoomVal  = 1;
       renderCssZoom();
     }
   } catch {
     cssZoomFallback = true;
-    zoomMin = 1;
-    zoomMax =
-      CSS_DIGITAL_ZOOM_MAX;
+    zoomMin  = 1;
+    zoomMax  = CSS_DIGITAL_ZOOM_MAX;
     zoomStep = 0.2;
-    zoomVal = 1;
-
+    zoomVal  = 1;
     renderCssZoom();
   }
 
-  if (btnZoomIn) {
-    btnZoomIn.disabled =
-      zoomVal >= zoomMax;
-  }
-
-  if (btnZoomOut) {
-    btnZoomOut.disabled =
-      zoomVal <= zoomMin;
-  }
+  if (btnZoomIn)  btnZoomIn.disabled  = (zoomVal >= zoomMax);
+  if (btnZoomOut) btnZoomOut.disabled = (zoomVal <= zoomMin);
 }
 
-async function setZoom(next) {
+async function setZoom(next){
   next = Number(next) || 1;
-
-  next = Math.max(
-    zoomMin,
-    Math.min(zoomMax, next)
-  );
-
-  if (
-    Math.abs(next - zoomVal) <
-    1e-3
-  ) {
-    return;
-  }
-
+  next = Math.max(zoomMin, Math.min(zoomMax, next));
+  if (Math.abs(next - zoomVal) < 1e-3) return;
   zoomVal = next;
 
-  try {
-    if (zoomSupported) {
-      await videoTrack.applyConstraints({
-        advanced: [{
-          zoom: zoomVal
-        }]
-      });
-    } else if (cssZoomFallback) {
+  try{
+    if (zoomSupported){
+      await videoTrack.applyConstraints({ advanced: [{ zoom: zoomVal }] });
+    } else if (cssZoomFallback){
       renderCssZoom();
     }
-  } catch {
+  } catch (e){
     cssZoomFallback = true;
     zoomSupported = false;
-
     renderCssZoom();
   }
 
-  if (btnZoomOut) {
-    btnZoomOut.disabled =
-      zoomVal <=
-      zoomMin + 1e-6;
-  }
-
-  if (btnZoomIn) {
-    btnZoomIn.disabled =
-      zoomVal >=
-      zoomMax - 1e-6;
-  }
+  if (btnZoomOut) btnZoomOut.disabled = zoomVal <= (zoomMin + 1e-6);
+  if (btnZoomIn)  btnZoomIn.disabled  = zoomVal >= (zoomMax - 1e-6);
 }
 
-if (btnZoomIn) {
-  btnZoomIn.onclick = () =>
-    setZoom(
-      (zoomVal + zoomStep)
-        .toFixed(2)
-    );
-}
+btnZoomIn  && (btnZoomIn.onclick  = ()=> setZoom((zoomVal + zoomStep).toFixed(2)));
+btnZoomOut && (btnZoomOut.onclick = ()=> setZoom((zoomVal - zoomStep).toFixed(2)));
 
-if (btnZoomOut) {
-  btnZoomOut.onclick = () =>
-    setZoom(
-      (zoomVal - zoomStep)
-        .toFixed(2)
-    );
-}
-
-async function tryApplyTorch(turnOn) {
-  try {
-    if (!videoTrack) {
-      return false;
-    }
-
-    const capabilities =
-      videoTrack
-        .getCapabilities?.() ||
-      {};
-
-    if (
-      !('torch' in capabilities)
-    ) {
-      if (btnTorch) {
-        btnTorch.disabled = true;
-      }
-
-      return false;
-    }
-
-    await videoTrack.applyConstraints({
-      advanced: [{
-        torch: !!turnOn
-      }]
-    });
-
+async function tryApplyTorch(turnOn){
+  try{
+    if(!videoTrack) return false;
+    const capabilities = videoTrack.getCapabilities?.() || {};
+    if(!('torch' in capabilities)) { if (btnTorch) btnTorch.disabled=true; return false; }
+    await videoTrack.applyConstraints({ advanced: [{ torch: !!turnOn }] });
     torchOn = !!turnOn;
-
-    if (btnTorch) {
-      btnTorch.classList.toggle(
-        'btn-on',
-        torchOn
-      );
-    }
-
+    btnTorch && btnTorch.classList.toggle('btn-on', torchOn);
     return true;
-  } catch {
-    if (btnTorch) {
-      btnTorch.disabled = true;
-    }
-
+  }catch{
+    if (btnTorch) btnTorch.disabled=true;
     return false;
   }
 }
 
-if (btnTorch) {
-  btnTorch.onclick = async () => {
-    const ok =
-      await tryApplyTorch(
-        !torchOn
-      );
-
-    if (!ok) {
-      toast(
-        'Thiết bị không hỗ trợ đèn',
-        'err'
-      );
-    }
-  };
-}
+btnTorch && (btnTorch.onclick = async ()=>{
+  const ok = await tryApplyTorch(!torchOn);
+  if(!ok) toast('Thiết bị không hỗ trợ đèn', 'err');
+});
 
 /* ================== CANVAS ================== */
-function drawToCanvas() {
+function drawToCanvas(){
   if (!video || !canvas) return;
-
-  const fw = video.videoWidth;
-  const fh = video.videoHeight;
-
-  if (!fw || !fh) return;
-
-  const desired =
-    TARGET_W / TARGET_H;
-
-  const ar =
-    fw / fh;
-
-  let sx = 0;
-  let sy = 0;
-  let sw = fw;
-  let sh = fh;
-
-  if (ar > desired) {
-    sw = fh * desired;
-    sx = (fw - sw) / 2;
-  } else {
-    sh = fw / desired;
-    sy = (fh - sh) / 2;
+  const fw = video.videoWidth, fh = video.videoHeight;
+  if(!fw || !fh) return;
+  const desired = TARGET_W / TARGET_H;
+  const ar = fw / fh;
+  let sx=0, sy=0, sw=fw, sh=fh;
+  if (ar > desired){ sw = fh * desired; sx = (fw - sw) / 2; }
+  else { sh = fw / desired; sy = (fh - sh) / 2; }
+  if (cssZoomFallback && zoomVal > 1){
+    const cx = sx + sw/2, cy = sy + sh/2, z = zoomVal;
+    const newSw = sw / z, newSh = sh / z;
+    sx = cx - newSw/2; sy = cy - newSh/2; sw = newSw; sh = newSh;
   }
-
-  if (
-    cssZoomFallback &&
-    zoomVal > 1
-  ) {
-    const cx =
-      sx + sw / 2;
-
-    const cy =
-      sy + sh / 2;
-
-    const z = zoomVal;
-
-    const newSw =
-      sw / z;
-
-    const newSh =
-      sh / z;
-
-    sx =
-      cx - newSw / 2;
-
-    sy =
-      cy - newSh / 2;
-
-    sw = newSw;
-    sh = newSh;
-  }
-
-  canvas.width =
-    TARGET_W;
-
-  canvas.height =
-    TARGET_H;
-
-  canvas
-    .getContext('2d')
-    .drawImage(
-      video,
-      sx,
-      sy,
-      sw,
-      sh,
-      0,
-      0,
-      TARGET_W,
-      TARGET_H
-    );
+  canvas.width = TARGET_W; canvas.height = TARGET_H;
+  canvas.getContext('2d').drawImage(video, sx, sy, sw, sh, 0, 0, TARGET_W, TARGET_H);
 }
 
 /* ================== EVENTS ================== */
-if (btnStart) {
-  btnStart.onclick = startCam;
-}
+btnStart && (btnStart.onclick = startCam);
 
 let shooting = false;
 
-if (btnShot) {
-  btnShot.onclick = async () => {
-    if (!stream || shooting) {
-      toast(
-        'Đang xử lý...',
-        'info'
-      );
+btnShot && (btnShot.onclick = async ()=>{
+  if(!stream || shooting){
+    toast('Đang xử lý...', 'info');
+    return;
+  }
 
+  shooting = true;
+  btnShot.disabled = true;
+
+  try{
+    await ensureAudioCtx();
+    await playShutter();
+    drawToCanvas();
+
+    toast('Đang lấy vị trí GPS...', 'info', 1800);
+    const gps = await getGPSOnce(10000);
+
+    if (gps && gps.err){
+      if (gps.err.code === 1){
+        toast('⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại GPS.', 'err', 4200);
+        openGeoHelp();
+        return;
+      }
+
+      toast('⚠️ Không lấy được GPS. Hãy bật vị trí rồi chụp lại.', 'err', 3500);
       return;
     }
 
-    shooting = true;
-    btnShot.disabled = true;
+    const lat = gps?.lat ?? 0;
+    const lng = gps?.lng ?? 0;
 
-    try {
-      await ensureAudioCtx();
-      await playShutter();
-
-      drawToCanvas();
-
-      toast(
-        'Đang lấy vị trí GPS...',
-        'info',
-        1800
-      );
-
-      const gps =
-        await getGPSOnce(10000);
-
-      if (gps && gps.err) {
-        if (gps.err.code === 1) {
-          toast(
-            '⚠️ Bạn đã chặn quyền vị trí. Hãy bật lại GPS.',
-            'err',
-            4200
-          );
-
-          openGeoHelp();
-          return;
-        }
-
-        toast(
-          '⚠️ Không lấy được GPS. Hãy bật vị trí rồi chụp lại.',
-          'err',
-          3500
-        );
-
-        return;
-      }
-
-      const lat =
-        gps?.lat ?? 0;
-
-      const lng =
-        gps?.lng ?? 0;
-
-      if (
-        !lat ||
-        lat === 0 ||
-        !lng ||
-        lng === 0
-      ) {
-        toast(
-          '⚠️ Chưa có vị trí. Hãy bật GPS rồi chụp lại.',
-          'err',
-          3500
-        );
-
-        try {
-          alert(
-            '⚠️ Chưa có vị trí. Hãy bật GPS/vị trí rồi chụp lại.'
-          );
-        } catch {}
-
-        return;
-      }
-
-      const mime =
-        'image/jpeg';
-
-      const dataUrl =
-        canvas.toDataURL(
-          mime,
-          0.85
-        );
-
-      const payload = {
-        image_mime: mime,
-        image_b64:
-          dataUrl.split(',')[1] ||
-          '',
-        ma_nv: MA_NV,
-        ten_nv: TEN_NV,
-        ma_kh: MA_KH || '',
-        ma_hd: MA_HD || ''
-      };
-
-      sessionStorage.setItem(
-        SESSION_IMG_KEY,
-        JSON.stringify(payload)
-      );
-
-      const targetUrl =
-        new URL(
-          '/checkin_khach_hang.html',
-          location.origin
-        );
-
-      targetUrl.searchParams.set(
-        'lat',
-        String(lat)
-      );
-
-      targetUrl.searchParams.set(
-        'lng',
-        String(lng)
-      );
-
-      targetUrl.searchParams.set(
-        'lag',
-        String(lat)
-      );
-
-      targetUrl.searchParams.set(
-        'ma_nv',
-        MA_NV
-      );
-
-      targetUrl.searchParams.set(
-        'ten_nv',
-        TEN_NV
-      );
-
-      if (MA_KH) {
-        targetUrl.searchParams.set(
-          'ma_kh',
-          MA_KH
-        );
-      }
-
-      if (MA_HD) {
-        targetUrl.searchParams.set(
-          'ma_hd',
-          MA_HD
-        );
-      }
-
-      targetUrl.searchParams.set(
-        'img',
-        'session'
-      );
-
-      const shotId =
-        String(Date.now());
-
-      targetUrl.searchParams.set(
-        'shot_id',
-        shotId
-      );
-
-      sessionStorage.setItem(
-        'CHECKIN_CURRENT_SHOT_ID',
-        shotId
-      );
-
-      sessionStorage.removeItem(
-        'CLICKED_CHECKIN_BROWSER_V1'
-      );
-
-      sessionStorage.removeItem(
-        'CHECKIN_BROWSER_DONE_V1'
-      );
-
-      location.assign(
-        targetUrl.toString()
-      );
-    } catch (err) {
-      console.error(err);
-
-      toast(
-        'Lỗi khi chuẩn bị dữ liệu: ' +
-        (err.message || err),
-        'err',
-        4000
-      );
-    } finally {
-      setTimeout(() => {
-        shooting = false;
-
-        btnShot.disabled =
-          !stream;
-      }, 800);
+    if (!lat || lat === 0 || !lng || lng === 0){
+      toast('⚠️ Chưa có vị trí. Hãy bật GPS rồi chụp lại.', 'err', 3500);
+      try{ alert('⚠️ Chưa có vị trí. Hãy bật GPS/vị trí rồi chụp lại.'); }catch{}
+      return; // THOÁT, KHÔNG ĐI TIẾP
     }
-  };
-}
 
-/* Nút Menu */
-if (btnMenu) {
-  btnMenu.onclick = () => {
-    location.assign(
-      'main.html'
-    );
-  };
-}
+    const mime = 'image/jpeg';
+    const dataUrl = canvas.toDataURL(mime, 0.85);
+
+    const payload = {
+      image_mime: mime,
+      image_b64: (dataUrl.split(',')[1] || ''),
+      ma_nv: MA_NV,
+      ten_nv: TEN_NV,
+      ma_kh: MA_KH || '',
+      ma_hd: MA_HD || ''
+    };
+
+    sessionStorage.setItem(SESSION_IMG_KEY, JSON.stringify(payload));
+
+    const targetUrl = new URL('/checkin_khach_hang.html', location.origin);
+
+    targetUrl.searchParams.set('lat', String(lat));
+    targetUrl.searchParams.set('lng', String(lng));
+    targetUrl.searchParams.set('lag', String(lat)); // giữ nguyên theo bạn
+    targetUrl.searchParams.set('ma_nv', MA_NV);
+    targetUrl.searchParams.set('ten_nv', TEN_NV);
+
+    if (MA_KH) targetUrl.searchParams.set('ma_kh', MA_KH);
+    if (MA_HD) targetUrl.searchParams.set('ma_hd', MA_HD);
+
+targetUrl.searchParams.set('img', 'session');
+
+/*
+  Mỗi lần chụp ảnh mới từ app_checkin,
+  tạo shot_id mới để trang checkin_khach_hang biết đây là lượt chụp mới.
+*/
+const shotId = String(Date.now());
+targetUrl.searchParams.set('shot_id', shotId);
+sessionStorage.setItem('CHECKIN_CURRENT_SHOT_ID', shotId);
+
+/*
+  Xóa toàn bộ khóa tạm của nút Mã KH trên chính trình duyệt/tab hiện tại.
+  Khi mở checkin_khach_hang.html:
+  - Các nút Mã KH sẽ hiện lại bình thường.
+  - Chỉ những KH đã check-in cùng ngày theo dữ liệu thật mới bị mờ.
+*/
+sessionStorage.removeItem('CLICKED_CHECKIN_BROWSER_V1');
+sessionStorage.removeItem('CHECKIN_BROWSER_DONE_V1');
+
+location.assign(targetUrl.toString());
+
+  } catch (err) {
+    console.error(err);
+    toast('Lỗi khi chuẩn bị dữ liệu: ' + (err.message || err), 'err', 4000);
+  } finally {
+    setTimeout(()=>{
+      shooting = false;
+      btnShot.disabled = !stream;
+    }, 800);
+  }
+});
+
+/* Nút Menu → về main.html */
+btnMenu && (btnMenu.onclick = ()=>{
+  location.assign('main.html');
+});
 
 /* ================== AUTO BOOT ================== */
-function showStage() {
-  if (
-    stage &&
-    !stage.classList.contains('ready')
-  ) {
+
+// helper: đảm bảo stage + UI hiện ra (kể cả khi chưa bật cam)
+function showStage(){
+  if (stage && !stage.classList.contains('ready')) {
     stage.classList.add('ready');
   }
 }
 
-async function getPermState(name) {
-  try {
-    if (
-      !navigator.permissions?.query
-    ) {
-      return null;
-    }
-
-    const p =
-      await navigator.permissions.query({
-        name
-      });
-
+async function getPermState(name){
+  try{
+    if (!navigator.permissions?.query) return null;
+    const p = await navigator.permissions.query({ name });
     return p.state;
-  } catch {
+  }catch{
     return null;
   }
 }
 
+// Nếu trình duyệt đã lưu quyền camera thì tự mở camera.
+// Không kiểm tra GPS ở đây. GPS chỉ lấy khi bấm chụp ảnh.
 (async () => {
-  try {
-    /*
-     * Chờ config.js hoàn tất trước khi khởi động.
-     */
-    await window.appCheckinConfigReady;
+  showStage();
+  if (btnShot) btnShot.disabled = true;
 
-    showStage();
+  const camState = await getPermState('camera');
 
-    if (btnShot) {
-      btnShot.disabled = true;
-    }
-
-    const camState =
-      await getPermState('camera');
-
-    if (camState === 'granted') {
-      toast(
-        'Đang mở camera...',
-        'info',
-        1200
-      );
-
-      await startCam();
-      return;
-    }
-
-    toast(
-      'Bấm nút "Cam" để mở camera.',
-      'info',
-      2200
-    );
-  } catch (error) {
-    console.error(
-      'Lỗi khởi tạo app_checkin:',
-      error
-    );
-
-    showStage();
-
-    if (btnShot) {
-      btnShot.disabled = true;
-    }
-
-    toast(
-      'Lỗi tải cấu hình: ' +
-      (error.message || error),
-      'err',
-      4200
-    );
+  if (camState === 'granted') {
+    toast('Đang mở camera...', 'info', 1200);
+    await startCam();
+    return;
   }
+
+  toast('Bấm nút "Cam" để mở camera.', 'info', 2200);
 })();
 
 /* Khi tab ẩn/hiện lại */
-document.addEventListener(
-  'visibilitychange',
-  () => {
-    if (document.hidden) {
-      stopCam();
-    } else {
-      showStage();
-
-      if (!stream) {
-        if (btnShot) {
-          btnShot.disabled = true;
-        }
-
-        toast(
-          'Bấm nút "Cam" để mở lại camera. GPS sẽ lấy khi chụp.',
-          'info',
-          2600
-        );
-      }
+document.addEventListener('visibilitychange', () => { 
+  if (document.hidden) {
+    // Ẩn tab → tắt camera cho nhẹ máy
+    stopCam();
+  } else {
+    showStage();
+    if (!stream) {
+      if (btnShot) btnShot.disabled = true;
+      toast('Bấm nút "Cam" để mở lại camera. GPS sẽ lấy khi chụp.', 'info', 2600);
     }
   }
-);
+});
