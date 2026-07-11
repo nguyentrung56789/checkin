@@ -21,7 +21,7 @@ const LOCAL_APP_MAP = {
 };
 
 // 4️⃣ Webhook nội bộ (ẩn khỏi body JSON)
-const LOCAL_WEBHOOK = process.env.LOCAL_WEBHOOK;
+const LOCAL_WEBHOOK = https://n8n.clawbot.io.vn/webhook/hoadon;
 
 // 5️⃣ Cấu hình hệ thống dọn rác (cleanup)
 const LOCAL_CLEANUP_CONFIG = {
