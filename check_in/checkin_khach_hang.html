@@ -2,78 +2,256 @@
 <html lang="vi">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Danh sách khách hàng (nv_checkin_khach_hang)</title>
-  <link rel="stylesheet" href="css/checkin_khach_hang.css" />
 
-  <script src="/js/internal_key.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  />
+
+  <meta name="theme-color" content="#111111" />
+
+  <title>Danh sách khách hàng</title>
+
+  <!-- CSS -->
+  <link
+    rel="stylesheet"
+    href="/css/checkin_khach_hang.css?v=3"
+  />
+
+  <!--
+    Thứ tự tải bắt buộc:
+
+    1. internal_key.js
+    2. cod_config.js
+    3. Supabase
+    4. checkin_khach_hang.js
+
+    defer sẽ giữ đúng thứ tự thực thi.
+  -->
+  <script defer src="/js/internal_key.js?v=3"></script>
+  <script defer src="/js/cod_config.js?v=3"></script>
+
+  <script
+    defer
+    src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"
+  ></script>
+
+  <script defer src="/js/checkin_khach_hang.js?v=3"></script>
 </head>
+
 <body>
-<div class="wrap">
+  <main class="wrap">
 
-  <div class="bar">
-    <div class="bar-left">
-      <button id="btnAdd" class="btn btn-primary">+ Thêm</button>
+    <!-- Thanh công cụ -->
+    <div class="bar">
+      <div class="bar-left">
 
-      <label class="row" style="gap:6px">
-        <span class="muted">Bán kính</span>
-        <select id="radiusSelect" class="input">
-          <option value="20">20m</option>
-          <option value="50" selected>50m</option>
-          <option value="100">100m</option>
-          <option value="500">500m</option>
-        </select>
-      </label>
+        <button
+          id="btnAdd"
+          class="btn btn-primary"
+          type="button"
+        >
+          + Thêm
+        </button>
+
+        <label class="row" style="gap:6px">
+          <span class="muted">Bán kính</span>
+
+          <select
+            id="radiusSelect"
+            class="input"
+          >
+            <option value="20">20m</option>
+            <option value="50" selected>50m</option>
+            <option value="100">100m</option>
+            <option value="500">500m</option>
+          </select>
+        </label>
+
+      </div>
+
+      <button
+        id="btnOpenCheckin"
+        class="btn btn-ok"
+        type="button"
+      >
+        📷 Check-in
+      </button>
     </div>
 
-    <button id="btnOpenCheckin" class="btn btn-ok">
-      📷 Checkin
-    </button>
-  </div>
+    <!-- Bảng khách hàng -->
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="width:160px">
+              Mã KH
+            </th>
 
-  <table class="table">
-    <thead>
-      <tr>
-        <th style="width:160px">Mã KH</th>
-        <th>Tên KH</th>
-        <th style="width:160px">Điện thoại</th>
-        <th class="col-actions" style="width:190px">Thao tác</th>
-      </tr>
-    </thead>
-    <tbody id="tbody">
-      <tr><td colspan="4" class="muted">Đang tải...</td></tr>
-    </tbody>
-  </table>
+            <th>
+              Tên KH
+            </th>
 
-  <div id="countInfo" class="muted" style="margin-top:8px"></div>
-</div>
+            <th style="width:160px">
+              Điện thoại
+            </th>
 
-<div class="modal-wrap" id="modalWrap">
-  <div class="modal">
+            <th
+              class="col-actions"
+              style="width:190px"
+            >
+              Thao tác
+            </th>
+          </tr>
+        </thead>
+
+        <tbody id="tbody">
+          <tr>
+            <td
+              colspan="4"
+              class="muted"
+            >
+              Đang tải...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div
+      id="countInfo"
+      class="muted"
+      style="margin-top:8px"
+    ></div>
+
+  </main>
+
+  <!-- Modal thêm/sửa khách hàng -->
+  <div
+    class="modal-wrap"
+    id="modalWrap"
+    style="display:none"
+  >
     <div class="modal">
-  <button id="btnCancel" class="modal-close" type="button" title="Đóng">×</button>
-  <h3 id="modalTitle">Thêm khách hàng</h3>
-    <div class="grid">
-      <label class="span2" id="maKhRow">Mã KH (khóa):
-        <input id="f_ma_kh" class="input" readonly>
-      </label>
 
-      <label class="span2">Tên KH: <input id="f_ten_kh" class="input" placeholder="VD: Nguyễn Văn A"></label>
-      <label class="span2">Địa chỉ: <input id="f_dia_chi" class="input" placeholder="Số nhà, đường..."></label>
-      <label>Phường/Xã: <input id="f_phuong_xa" class="input" placeholder="VD: Hàng Kênh"></label>
-      <label>Thành phố: <input id="f_thanh_pho" class="input" placeholder="VD: Hải Phòng"></label>
-      <label class="span2">Điện thoại: <input id="f_dien_thoai" class="input" placeholder="VD: 09xxxxxxxx"></label>
-    </div>
-    <div class="modal-actions">
-      <button id="btnSave" class="btn btn-ok">Lưu</button>
-      <span class="right muted" id="modalHint"></span>
+      <button
+        id="btnCancel"
+        class="modal-close"
+        type="button"
+        title="Đóng"
+        aria-label="Đóng"
+      >
+        ×
+      </button>
+
+      <h3 id="modalTitle">
+        Thêm khách hàng
+      </h3>
+
+      <div class="grid">
+
+        <label
+          class="span2"
+          id="maKhRow"
+        >
+          Mã KH:
+
+          <input
+            id="f_ma_kh"
+            class="input"
+            type="text"
+            readonly
+          />
+        </label>
+
+        <label class="span2">
+          Tên KH:
+
+          <input
+            id="f_ten_kh"
+            class="input"
+            type="text"
+            placeholder="VD: Nguyễn Văn A"
+            autocomplete="off"
+          />
+        </label>
+
+        <label class="span2">
+          Địa chỉ:
+
+          <input
+            id="f_dia_chi"
+            class="input"
+            type="text"
+            placeholder="Số nhà, đường..."
+            autocomplete="off"
+          />
+        </label>
+
+        <label>
+          Phường/Xã:
+
+          <input
+            id="f_phuong_xa"
+            class="input"
+            type="text"
+            placeholder="VD: Hàng Kênh"
+            autocomplete="off"
+          />
+        </label>
+
+        <label>
+          Thành phố:
+
+          <input
+            id="f_thanh_pho"
+            class="input"
+            type="text"
+            placeholder="VD: Hải Phòng"
+            autocomplete="off"
+          />
+        </label>
+
+        <label class="span2">
+          Điện thoại:
+
+          <input
+            id="f_dien_thoai"
+            class="input"
+            type="tel"
+            inputmode="tel"
+            placeholder="VD: 09xxxxxxxx"
+            autocomplete="tel"
+          />
+        </label>
+
+      </div>
+
+      <div class="modal-actions">
+        <button
+          id="btnSave"
+          class="btn btn-ok"
+          type="button"
+        >
+          Lưu
+        </button>
+
+        <span
+          class="right muted"
+          id="modalHint"
+        ></span>
+      </div>
+
     </div>
   </div>
-</div>
 
-<div class="toast" id="toast"></div>
+  <!-- Toast -->
+  <div
+    class="toast"
+    id="toast"
+    role="status"
+    aria-live="polite"
+  ></div>
 
-<script defer src="js/checkin_khach_hang.js"></script>
 </body>
 </html>
