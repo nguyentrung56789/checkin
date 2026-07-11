@@ -302,18 +302,42 @@ async function getSupabaseLib(){
   }
 
   function getWebhookURL(){
-    return 'https://dhsybbqoe.datadex.vn/webhook/hoadon';
+    if (typeof window.getConfig !== 'function'){
+      throw new Error('Không tìm thấy getConfig() từ config.js');
+    }
+
+    const url = String(window.getConfig('webhook') || '').trim();
+
+    if (!url){
+      throw new Error('Thiếu WEBHOOK_URL từ config.js');
+    }
+
+    return url;
   }
 
   async function postWebhook(payload){
+    if (!window.configReady){
+      throw new Error(
+        'Không tìm thấy configReady. Kiểm tra internal_key.js và config.js.'
+      );
+    }
+
+    await window.configReady;
+
     const url = getWebhookURL();
     const headers = { 'content-type':'application/json' };
 
     try{
-      if (typeof getInternalKey === 'function'){
-        headers['x-internal-key'] = getInternalKey();
+      if (typeof window.getInternalKey === 'function'){
+        const internalKey = String(window.getInternalKey() || '').trim();
+
+        if (internalKey){
+          headers['x-internal-key'] = internalKey;
+        }
       }
-    }catch{}
+    }catch(err){
+      console.warn('Không lấy được INTERNAL_KEY:', err);
+    }
 
     try{
       const res = await fetch(url, {
@@ -323,9 +347,25 @@ async function getSupabaseLib(){
       });
 
       const text = await res.text().catch(()=> '');
-      if (res.ok) return { ok:true, status:res.status, text };
-      if (res.status !== 405) return { ok:false, status:res.status, text };
-    }catch(e){}
+
+      if (res.ok){
+        return {
+          ok:true,
+          status:res.status,
+          text
+        };
+      }
+
+      if (res.status !== 405){
+        return {
+          ok:false,
+          status:res.status,
+          text
+        };
+      }
+    }catch(e){
+      console.warn('POST webhook lỗi, thử GET:', e);
+    }
 
     const qs = new URLSearchParams(
       Object.entries(payload).map(([k,v])=>[k, String(v ?? '')])
@@ -336,13 +376,24 @@ async function getSupabaseLib(){
     try{
       const res2 = await fetch(getUrl, {
         method:'GET',
-        headers: { 'x-internal-key': headers['x-internal-key'] || '' }
+        headers: {
+          'x-internal-key': headers['x-internal-key'] || ''
+        }
       });
 
       const text2 = await res2.text().catch(()=> '');
-      return { ok: res2.ok, status: res2.status, text: text2 };
+
+      return {
+        ok:res2.ok,
+        status:res2.status,
+        text:text2
+      };
     }catch(e2){
-      return { ok:false, status:0, text:String(e2) };
+      return {
+        ok:false,
+        status:0,
+        text:String(e2)
+      };
     }
   }
 
@@ -397,17 +448,62 @@ async function getSupabaseLib(){
 
   const closeModal = () => $('#modalWrap').style.display = 'none';
 
-async function makeClient(){
-  const url  = getConfig('url');
-  const anon = getConfig('anon');
-  const lib  = await getSupabaseLib();
-
-  return lib.createClient(url, anon, {
-    auth: {
-      persistSession: false
+  async function makeClient(){
+    if (!window.configReady){
+      throw new Error(
+        'Không tìm thấy configReady. Kiểm tra thứ tự tải internal_key.js và config.js.'
+      );
     }
-  });
-}
+
+    await window.configReady;
+
+    if (typeof window.getConfig !== 'function'){
+      throw new Error('Không tìm thấy getConfig() từ config.js');
+    }
+
+    const url = String(window.getConfig('url') || '').trim();
+
+    const key = String(
+      window.getConfig('role') ||
+      window.getConfig('anon') ||
+      ''
+    ).trim();
+
+    if (!url){
+      throw new Error('Thiếu SUPABASE_URL từ config.js');
+    }
+
+    if (!key){
+      throw new Error(
+        'Thiếu SUPABASE_ROLE hoặc SUPABASE_ANON_KEY từ config.js'
+      );
+    }
+
+    const lib = await getSupabaseLib();
+
+    if (!lib?.createClient){
+      throw new Error('Không tải được thư viện Supabase');
+    }
+
+    const internalKey =
+      typeof window.getInternalKey === 'function'
+        ? String(window.getInternalKey() || '').trim()
+        : '';
+
+    return lib.createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false
+      },
+      global: {
+        headers: internalKey
+          ? {
+              'x-internal-key': internalKey
+            }
+          : {}
+      }
+    });
+  }
 
   async function loadData(){
     $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
@@ -469,7 +565,7 @@ async function makeClient(){
         <td class="col-phone">${r.dien_thoai || ''}</td>
         <td class="col-actions">
            <button class="btn btn-warn btn-edit">Sửa</button>
-  <button class="btn btn-danger btn-delete" data-id="${escAttr(r.ma_kh)}">Xóa</button>
+           <button class="btn btn-danger btn-delete" data-id="${escAttr(r.ma_kh)}">Xóa</button>
         </td>
       </tr>`;
       }).join('');
@@ -671,25 +767,25 @@ async function makeClient(){
 
       toast(`Đã xóa ${ma_kh}`, 'ok');
 
-const tr = document.querySelector(`tr[data-id="${cssEscapeSafe(ma_kh)}"]`);
-if (tr) tr.remove();
+      const tr = document.querySelector(`tr[data-id="${cssEscapeSafe(ma_kh)}"]`);
+      if (tr) tr.remove();
 
-const tbodyRows = $$('#tbody tr');
+      const tbodyRows = $$('#tbody tr');
 
-if (tbodyRows.length === 0) {
-  $('#tbody').innerHTML =
-    `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
-}
+      if (tbodyRows.length === 0) {
+        $('#tbody').innerHTML =
+          `<tr><td colspan="4" class="muted">Không có dữ liệu</td></tr>`;
+      }
 
-const countInfo = $('#countInfo');
-if (countInfo) {
-  const oldText = countInfo.textContent || '';
-  const m = oldText.match(/^(\d+)/);
-  if (m) {
-    const next = Math.max(0, Number(m[1]) - 1);
-    countInfo.textContent = oldText.replace(/^\d+/, String(next));
-  }
-}
+      const countInfo = $('#countInfo');
+      if (countInfo) {
+        const oldText = countInfo.textContent || '';
+        const m = oldText.match(/^(\d+)/);
+        if (m) {
+          const next = Math.max(0, Number(m[1]) - 1);
+          countInfo.textContent = oldText.replace(/^\d+/, String(next));
+        }
+      }
     }catch(err){
       console.error(err);
       toast('Xóa thất bại: ' + err.message, 'err');
@@ -911,6 +1007,14 @@ if (countInfo) {
   });
 
   try{
+    if (!window.configReady){
+      throw new Error(
+        'Không tìm thấy configReady. Kiểm tra internal_key.js và config.js.'
+      );
+    }
+
+    await window.configReady;
+
     SB = await makeClient();
 
     await loadCheckedToday();
@@ -920,13 +1024,19 @@ if (countInfo) {
     const coords = getLatLngFromURL();
 
     if (coords){
-      runNearby(coords.lat, coords.lng, getRadiusFromUI(), false);
+      await runNearby(
+        coords.lat,
+        coords.lng,
+        getRadiusFromUI(),
+        false
+      );
     }else{
-      loadData(false);
+      await loadData(false);
     }
   }catch(e){
-    console.error(e);
+    console.error('Lỗi khởi tạo checkin_khach_hang:', e);
+
     $('#tbody').innerHTML =
-      `<tr><td colspan="4" class="muted">Lỗi khởi tạo: ${e.message}</td></tr>`;
+      `<tr><td colspan="4" class="muted">Lỗi khởi tạo: ${escAttr(e.message || e)}</td></tr>`;
   }
 })();
