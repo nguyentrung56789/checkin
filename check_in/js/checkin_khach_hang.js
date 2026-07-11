@@ -397,12 +397,29 @@ async function getSupabaseLib(){
 
   const closeModal = () => $('#modalWrap').style.display = 'none';
 
-  async function makeClient(){
-    const url  = getConfig('url');
-    const anon = getConfig('anon');
-    const lib  = await getSupabaseLib();
-    return lib.createClient(url, anon, { auth:{ persistSession:false } });
+async function makeClient() {
+  if (typeof window.getConfig !== 'function') {
+    throw new Error('Không tải được /js/cod_config.js');
   }
+
+  const config = window.getConfig('checkin_khach_hang');
+
+  if (!config.url) {
+    throw new Error('Thiếu Supabase URL');
+  }
+
+  if (!config.key) {
+    throw new Error('Thiếu Supabase publishable key');
+  }
+
+  const lib = await getSupabaseLib();
+
+  return lib.createClient(config.url, config.key, {
+    auth: {
+      persistSession: false
+    }
+  });
+}
 
   async function loadData(){
     $('#tbody').innerHTML = `<tr><td colspan="4" class="muted">Đang tải...</td></tr>`;
